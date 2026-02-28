@@ -1,0 +1,25 @@
+{
+  "name": "human.ai",
+  "version": "1.0.0",
+  "description": "��#\u0000 \u0000h\u0000u\u0000m\u0000a\u0000n\u0000.\u0000a\u0000i\u0000\r\u0000 \u0000",
+  "main": "ai-service.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@strands-agents/sdk": "^0.4.0",
+    "d3-force": "^3.0.0",
+    "lucide-react": "^0.575.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-force-graph-2d": "^1.29.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.2.0"
+  }
+}
