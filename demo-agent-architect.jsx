@@ -3,12 +3,12 @@ import SwarmGraph from "./SwarmGraph";
 import { getSwarmInteraction } from "./ai-service";
 import { generateAgents as generateAgentsBackend, connectSimulationStream } from "./api";
 
-// ═══════════════════════════════════════════════════════════════════════
-// HUMAINI.TY — Phase 1: Agent Architect & Population Generator
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// HUMAINI.TY G�� Phase 1: Agent Architect & Population Generator
 // Build synthetic minds. Configure psychology. Generate swarms.
-// ═══════════════════════════════════════════════════════════════════════
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 
-/* ─── Design Tokens ─── */
+/* G��G��G�� Design Tokens G��G��G�� */
 const T = {
   bg: "#060810", bgGrain: "#080a14",
   panel: "#0c0e18", panelHi: "#10131f", panelTop: "#151827",
@@ -23,41 +23,41 @@ const T = {
   orange: "#e88a3a", teal: "#2ab7a9",
 };
 
-/* ─── Typography: Syne (display) + DM Mono (data) ─── */
+/* G��G��G�� Typography: Syne (display) + DM Mono (data) G��G��G�� */
 const FONT_DISPLAY = "'Syne', 'Clash Display', sans-serif";
 const FONT_MONO = "'DM Mono', 'IBM Plex Mono', monospace";
 const FONT_BODY = "'Instrument Sans', 'DM Sans', sans-serif";
 
-/* ─── Big Five Personality System ─── */
+/* G��G��G�� Big Five Personality System G��G��G�� */
 const BIG5 = {
-  O: { key: "O", full: "Openness", color: T.violet, icon: "◈", lo: "Conventional", hi: "Inventive", loDesc: "Prefers routine, practical, traditional approaches", hiDesc: "Seeks novelty, abstract thinking, creative exploration" },
-  C: { key: "C", full: "Conscientiousness", color: T.cyan, icon: "◇", lo: "Spontaneous", hi: "Meticulous", loDesc: "Flexible, improvises, prioritises in-the-moment", hiDesc: "Organised, disciplined, plans carefully ahead" },
-  E: { key: "E", full: "Extraversion", color: T.amber, icon: "◆", lo: "Reserved", hi: "Outgoing", loDesc: "Energised by solitude, reflective, listens more", hiDesc: "Energised by groups, talkative, seeks stimulation" },
-  A: { key: "A", full: "Agreeableness", color: T.green, icon: "○", lo: "Competitive", hi: "Altruistic", loDesc: "Questions motives, values self-interest, skeptical", hiDesc: "Trusting, cooperative, puts others first" },
-  N: { key: "N", full: "Neuroticism", color: T.rose, icon: "△", lo: "Resilient", hi: "Sensitive", loDesc: "Emotionally steady, handles stress calmly", hiDesc: "Reactive to stress, experiences emotions intensely" },
+  O: { key: "O", full: "Openness", color: T.violet, icon: "G��", lo: "Conventional", hi: "Inventive", loDesc: "Prefers routine, practical, traditional approaches", hiDesc: "Seeks novelty, abstract thinking, creative exploration" },
+  C: { key: "C", full: "Conscientiousness", color: T.cyan, icon: "G��", lo: "Spontaneous", hi: "Meticulous", loDesc: "Flexible, improvises, prioritises in-the-moment", hiDesc: "Organised, disciplined, plans carefully ahead" },
+  E: { key: "E", full: "Extraversion", color: T.amber, icon: "G��", lo: "Reserved", hi: "Outgoing", loDesc: "Energised by solitude, reflective, listens more", hiDesc: "Energised by groups, talkative, seeks stimulation" },
+  A: { key: "A", full: "Agreeableness", color: T.green, icon: "G��", lo: "Competitive", hi: "Altruistic", loDesc: "Questions motives, values self-interest, skeptical", hiDesc: "Trusting, cooperative, puts others first" },
+  N: { key: "N", full: "Neuroticism", color: T.rose, icon: "G��", lo: "Resilient", hi: "Sensitive", loDesc: "Emotionally steady, handles stress calmly", hiDesc: "Reactive to stress, experiences emotions intensely" },
 };
 const B5_KEYS = ["O", "C", "E", "A", "N"];
 
-/* ─── Cognitive Biases ─── */
+/* G��G��G�� Cognitive Biases G��G��G�� */
 const BIASES = [
   { id: "confirmation", name: "Confirmation Bias", desc: "Favours information confirming existing beliefs", weight: 0.35, source: "Nickerson (1998)" },
-  { id: "lossAversion", name: "Loss Aversion", desc: "Losses weigh ~2× heavier than equivalent gains", weight: 0.45, source: "Kahneman & Tversky (1979)" },
+  { id: "lossAversion", name: "Loss Aversion", desc: "Losses weigh ~2+� heavier than equivalent gains", weight: 0.45, source: "Kahneman & Tversky (1979)" },
   { id: "anchoring", name: "Anchoring", desc: "Over-relies on first piece of information received", weight: 0.40, source: "Tversky & Kahneman (1974)" },
   { id: "sycophancy", name: "Sycophancy", desc: "Tendency to agree with perceived authority", weight: 0.30, source: "Milgram (1963)" },
   { id: "statusQuo", name: "Status Quo Bias", desc: "Preference for current state of affairs", weight: 0.32, source: "Samuelson & Zeckhauser (1988)" },
   { id: "bandwagon", name: "Bandwagon Effect", desc: "Adopting beliefs proportional to group adoption", weight: 0.28, source: "Asch (1951)" },
 ];
 
-/* ─── Agent Names ─── */
+/* G��G��G�� Agent Names G��G��G�� */
 const FIRST = ["Ada", "Felix", "Mira", "Kai", "Zara", "Leo", "Nova", "Ravi", "Elsa", "Omar", "Yuki", "Sven", "Dara", "Emil", "Luna", "Hugo", "Iris", "Niko", "Cleo", "Axel", "Sage", "Remy", "Wren", "Juno", "Ezra", "Thea", "Idris", "Priya", "Malik", "Freya", "Hana", "Cyrus", "Lyra", "Tomas", "Nia", "Soren", "Vera", "Arlo", "Mei", "Dante"];
 const ROLES = ["Student", "Teacher", "Executive", "Nurse", "Engineer", "Artist", "Farmer", "Journalist", "Retiree", "Social Worker", "Activist", "Scientist", "Chef", "Musician", "Lawyer", "Architect", "Librarian", "Paramedic"];
 const CULTURES = ["Urban American", "Rural American", "Western European", "East Asian", "South Asian", "Latin American", "Middle Eastern", "Nordic", "Southeast Asian", "Caribbean", "Sub-Saharan African", "Oceanian"];
 const EDUCATION = ["High School", "Some College", "Bachelor's", "Master's", "Doctorate", "Trade School"];
-const INCOME = ["Low ($0–30k)", "Lower-Mid ($30–60k)", "Middle ($60–100k)", "Upper-Mid ($100–200k)", "High ($200k+)"];
+const INCOME = ["Low ($0G��30k)", "Lower-Mid ($30G��60k)", "Middle ($60G��100k)", "Upper-Mid ($100G��200k)", "High ($200k+)"];
 const MEMORY_MODES = [
-  { id: "short", label: "Short-Term", desc: "Session only. No cross-interaction recall.", icon: "⚡" },
-  { id: "medium", label: "Medium-Term", desc: "Vector memory with exponential decay.", icon: "◎" },
-  { id: "persistent", label: "Persistent", desc: "Full Memory Stream with reflections.", icon: "∞" },
+  { id: "short", label: "Short-Term", desc: "Session only. No cross-interaction recall.", icon: "G��" },
+  { id: "medium", label: "Medium-Term", desc: "Vector memory with exponential decay.", icon: "G��" },
+  { id: "persistent", label: "Persistent", desc: "Full Memory Stream with reflections.", icon: "G�P" },
 ];
 
 let _uid = 0;
@@ -82,94 +82,35 @@ function archetypeFromTraits(traits = {}) {
   return candidates.sort((a, b) => b.score - a.score)[0].name;
 }
 
-/* ─── Hardcoded fallback: diverse personas with distinct thought process and believable stats ─── */
-const FALLBACK_ROLES = [
-  "Teacher", "Nurse", "Retail Manager", "Engineer", "Driver", "Social Worker", "Chef", "Architect",
-  "Journalist", "Paramedic", "Scientist", "Lawyer", "Freelancer", "Student", "Retiree", "Care Worker",
-  "Accountant", "Artist", "Farmer", "Librarian", "Police Officer", "Electrician", "HR Manager", "Barista",
-];
-const FALLBACK_PERSONAS = [
-  "Budget-focused household planner", "Service-quality first evaluator", "Price-sensitive practical buyer",
-  "Analytical optimization seeker", "Cost-pressure risk minimizer", "Community-oriented value seeker",
-  "Risk-averse switcher", "Loyalty-weighted stayer", "Evidence-based skeptic", "Convenience maximizer",
-  "Fairness-focused critic", "Early adopter who re-evaluates", "Stable-income prioritizer", "Bargain hunter",
-  "Trust-based loyalist", "Pragmatic switcher", "Environmental + cost conscious", "Time-poor convenience buyer",
-];
-const FALLBACK_THINKING = [
-  "Weighing service value against price elasticity and personal risk tolerance.",
-  "Considering household budget impact and whether alternatives offer comparable quality.",
-  "Updating prior based on what peers in my network are doing and saying.",
-  "Balancing switching costs vs. long-term savings; loyalty discount matters.",
-  "Evaluating if the brand has crossed my acceptable price threshold.",
-  "Factoring in hassle of changing provider and potential hidden fees elsewhere.",
-  "Comparing marginal utility of the service to the marginal cost increase.",
-  "Reassessing after hearing others’ experiences; social proof is influential.",
-  "Checking whether the increase is justified by tangible improvements.",
-  "Weighing loss aversion: perceived loss from price rise vs. uncertainty of switching.",
-];
-const FALLBACK_REASONING = [
-  "Initial prior: stay if value still exceeds cost; re-evaluate each billing cycle.",
-  "Leaning stay because reliability and familiarity reduce my cognitive load.",
-  "Leaning churn: price sensitivity is high and alternatives are acceptable.",
-  "Downgrade preserves core utility while cutting cost; best of both short term.",
-  "Churn is rational at this price point given my income and usage pattern.",
-  "Stay for now; will reassess if quality drops or another offer is clearly better.",
-  "Undecided until I see how many others leave and whether the provider responds.",
-  "Strong stay: network effects and sunk cost in this ecosystem matter to me.",
-];
-
 function localFallbackSwarm(count) {
   const n = Math.min(Math.max(1, count), 50);
-  const stayWeight = 0.42;
-  const churnWeight = 0.35;
-  const downgradeWeight = 0.23;
+  const templates = [
+    { role: "Teacher", persona: "Budget-focused household planner", msg: "I can stay for now, but only if pricing stabilizes.", action: "Stay" },
+    { role: "Nurse", persona: "Service-quality first evaluator", msg: "I'm likely to stay because reliability matters most to me.", action: "Stay" },
+    { role: "Retail Manager", persona: "Price-sensitive practical buyer", msg: "At this price, churn is the more rational option for me.", action: "Churn" },
+    { role: "Engineer", persona: "Analytical optimization seeker", msg: "Downgrading keeps value while limiting unnecessary spend.", action: "Downgrade" },
+    { role: "Driver", persona: "Cost-pressure risk minimizer", msg: "I cannot justify this increase, so I would switch.", action: "Churn" },
+  ];
   return Array.from({ length: n }, (_, i) => {
+    const t = templates[i % templates.length];
     const traits = randomTraits({});
-    const roll = (i * 17 + 31) % 100 / 100;
-    const action = roll < stayWeight ? "Stay" : roll < stayWeight + churnWeight ? "Churn" : "Downgrade";
-    const role = FALLBACK_ROLES[i % FALLBACK_ROLES.length];
-    const persona = FALLBACK_PERSONAS[i % FALLBACK_PERSONAS.length];
-    const thinkingProcess = FALLBACK_THINKING[i % FALLBACK_THINKING.length];
-    const lastReasoning = FALLBACK_REASONING[i % FALLBACK_REASONING.length];
-    const msgs = {
-      Stay: [
-        "I can stay for now, but only if pricing stabilizes.",
-        "I'm likely to stay because reliability matters most to me.",
-        "Staying makes sense for me given my usage and the alternatives I've seen.",
-        "I'll stay; the hassle of switching isn't worth it yet.",
-      ],
-      Churn: [
-        "At this price, churn is the more rational option for me.",
-        "I cannot justify this increase, so I would switch.",
-        "I'm leaning toward leaving unless there's a meaningful retention offer.",
-        "The value proposition has shifted; I'll look elsewhere.",
-      ],
-      Downgrade: [
-        "Downgrading keeps value while limiting unnecessary spend.",
-        "I'll reduce my plan to match what I actually use.",
-        "A lower tier still meets my needs and saves money.",
-        "Downgrade is my compromise between staying and leaving.",
-      ],
-    };
-    const msgList = msgs[action];
-    const lastMessage = msgList[(i + action.length) % msgList.length];
-    const confidence = clamp(0.42 + (traits.C - traits.N) * 0.025 + (traits.E - 5) * 0.02 + (i % 5) * 0.02, 0.38, 0.91);
+    const confidence = clamp(0.48 + (traits.C - traits.N) * 0.03 + (traits.E - 5) * 0.015, 0.36, 0.92);
     return {
       id: `agent-${i + 1}`,
       name: `${pick(FIRST)}-${100 + i}`,
-      role,
+      role: t.role,
       culture: pick(CULTURES),
       education: pick(EDUCATION),
       income: pick(INCOME),
       traits,
       archetype: archetypeFromTraits(traits),
       confidence: Number(confidence.toFixed(2)),
-      lastAction: action,
-      lastReasoning,
-      lastMessage,
-      thinkingProcess,
-      reasoningHistory: [{ round: 0, stance: action, reasoning: lastReasoning }],
-      persona,
+      lastAction: t.action,
+      lastReasoning: "The agent balances budget pressure, utility, and perceived switching cost.",
+      lastMessage: t.msg,
+      thinkingProcess: "Weighing service value against price elasticity and personal risk tolerance.",
+      reasoningHistory: [{ round: 0, stance: t.action, reasoning: "Initial prior before social influence effects." }],
+      persona: t.persona,
     };
   });
 }
@@ -191,9 +132,9 @@ function backendAgentsToSwarm(agents, scenarioForFallback = "") {
       id: `agent-${i + 1}`,
       name: a.name || `Agent ${i + 1}`,
       role: a.occupation || "Participant",
-      culture: a.location || "—",
-      education: "—",
-      income: a.income_bracket || "—",
+      culture: a.location || "G��",
+      education: "G��",
+      income: a.income_bracket || "G��",
       traits,
       archetype: archetypeFromTraits(traits),
       confidence: 0.55,
@@ -202,12 +143,12 @@ function backendAgentsToSwarm(agents, scenarioForFallback = "") {
       lastMessage: null,
       thinkingProcess: "",
       reasoningHistory: [],
-      persona: [a.occupation, a.location, a.political_leaning].filter(Boolean).join(" · ") || "—",
+      persona: [a.occupation, a.location, a.political_leaning].filter(Boolean).join(" -+ ") || "G��",
     };
   });
 }
 
-/* ─── Generate random traits respecting bias config ─── */
+/* G��G��G�� Generate random traits respecting bias config G��G��G�� */
 function randomTraits(biasConfig = {}) {
   const t = {};
   B5_KEYS.forEach(k => {
@@ -221,7 +162,7 @@ function randomTraits(biasConfig = {}) {
   return t;
 }
 
-/* ─── Generate one agent ─── */
+/* G��G��G�� Generate one agent G��G��G�� */
 function makeAgent(traitBias = {}) {
   const traits = randomTraits(traitBias);
   return {
@@ -238,7 +179,7 @@ function makeAgent(traitBias = {}) {
   };
 }
 
-/* ─── Claude API: generate persona preview ─── */
+/* G��G��G�� Claude API: generate persona preview G��G��G�� */
 async function generatePreview(agent) {
   const td = B5_KEYS.map(k => `${BIG5[k].full}: ${agent.traits[k]}/10`).join(", ");
   try {
@@ -271,11 +212,11 @@ Respond ONLY with JSON (no markdown): {"sketch":"...","tendencies":["...","...",
   }
 }
 
-// ═══════════════════════════════════════════════════
-// ─── COMPONENTS ───
-// ═══════════════════════════════════════════════════
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// G��G��G�� COMPONENTS G��G��G��
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 
-/* ─── Personality Fingerprint: unique SVG per agent ─── */
+/* G��G��G�� Personality Fingerprint: unique SVG per agent G��G��G�� */
 function Fingerprint({ traits, size = 64, animate = false }) {
   const ref = useRef(null);
   useEffect(() => {
@@ -321,7 +262,7 @@ function Fingerprint({ traits, size = 64, animate = false }) {
   return <canvas ref={ref} width={size} height={size} style={{ display: "block" }} />;
 }
 
-/* ─── Trait Slider with gradient track ─── */
+/* G��G��G�� Trait Slider with gradient track G��G��G�� */
 function TraitSlider({ traitKey, value, onChange, expanded, onToggle }) {
   const b = BIG5[traitKey];
   const pct = ((value - 1) / 9) * 100;
@@ -351,7 +292,7 @@ function TraitSlider({ traitKey, value, onChange, expanded, onToggle }) {
   );
 }
 
-/* ─── Bias Toggle Tile ─── */
+/* G��G��G�� Bias Toggle Tile G��G��G�� */
 function BiasTile({ bias, active, onToggle }) {
   return (
     <button onClick={onToggle} style={{
@@ -374,7 +315,7 @@ function BiasTile({ bias, active, onToggle }) {
   );
 }
 
-/* ─── Agent Card in Gallery ─── */
+/* G��G��G�� Agent Card in Gallery G��G��G�� */
 function AgentCard({ agent, index, onClick, isSelected }) {
   const dominant = B5_KEYS.reduce((best, k) => agent.traits[k] > (agent.traits[best] || 0) ? k : best, "O");
   const domColor = BIG5[dominant].color;
@@ -393,7 +334,7 @@ function AgentCard({ agent, index, onClick, isSelected }) {
         <Fingerprint traits={agent.traits} size={44} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text, fontFamily: FONT_DISPLAY, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{agent.name}</div>
-          <div style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO }}>{agent.role} · {agent.culture.split(" ")[0]}</div>
+          <div style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO }}>{agent.role} -+ {agent.culture.split(" ")[0]}</div>
         </div>
       </div>
       {/* Trait bar mini-viz */}
@@ -418,17 +359,17 @@ function AgentCard({ agent, index, onClick, isSelected }) {
   );
 }
 
-/* ─── Distribution Preset Chips ─── */
+/* G��G��G�� Distribution Preset Chips G��G��G�� */
 const DIST_PRESETS = [
   { label: "Uniform Random", config: {} },
   { label: "50/50 Agree Split", config: { groups: [{ pct: 50, bias: { A: 8 } }, { pct: 50, bias: { A: 3 } }] } },
   { label: "High Extraversion", config: { bias: { E: 8 } } },
-  { label: "Polarised (O↑ vs O↓)", config: { groups: [{ pct: 50, bias: { O: 9 } }, { pct: 50, bias: { O: 2 } }] } },
+  { label: "Polarised (OG�� vs OG��)", config: { groups: [{ pct: 50, bias: { O: 9 } }, { pct: 50, bias: { O: 2 } }] } },
   { label: "Neurotic Population", config: { bias: { N: 8, E: 4 } } },
   { label: "Cooperative Leaders", config: { bias: { A: 8, C: 8, E: 7 } } },
 ];
 
-/* ─── Population Generator ─── */
+/* G��G��G�� Population Generator G��G��G�� */
 function generatePopulation(count, distConfig = {}) {
   const agents = [];
   if (distConfig.groups) {
@@ -446,37 +387,37 @@ function generatePopulation(count, distConfig = {}) {
   return agents;
 }
 
-// ═══════════════════════════════════════════════════
-// ─── MAIN APPLICATION ───
-// ═══════════════════════════════════════════════════
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// G��G��G�� MAIN APPLICATION G��G��G��
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 
 export default function HumanityPhase1() {
-  /* ─ State: Single Agent Architect ─ */
+  /* G�� State: Single Agent Architect G�� */
   const [traits, setTraits] = useState({ O: 7, C: 5, E: 6, A: 4, N: 5 });
   const [expandedTrait, setExpandedTrait] = useState(null);
   const [role, setRole] = useState("Journalist");
   const [culture, setCulture] = useState("Urban American");
   const [education, setEducation] = useState("Bachelor's");
-  const [income, setIncome] = useState("Middle ($60–100k)");
+  const [income, setIncome] = useState("Middle ($60G��100k)");
   const [memoryMode, setMemoryMode] = useState("persistent");
   const [activeBiases, setActiveBiases] = useState({});
   const [preview, setPreview] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
-  /* ─ State: Population Generator ─ */
+  /* G�� State: Population Generator G�� */
   const [view, setView] = useState("architect"); // architect | swarm
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [hoveredAgent, setHoveredAgent] = useState(null);
 
-  /* ─ State: Swarm Network (Strand Pattern) ─ */
+  /* G�� State: Swarm Network (Strand Pattern) G�� */
   const [swarmAgents, setSwarmAgents] = useState([]);
   const [swarmLinks, setSwarmLinks] = useState([]);
   const [isAllocating, setIsAllocating] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [swarmCount, setSwarmCount] = useState(12);
+  const [swarmCount, setSwarmCount] = useState(25);
   const [activeTask, setActiveTask] = useState("Coordinate resources for emergency response");
   const [scenario, setScenario] = useState("Price increase of 15%. Do you stay, churn, or downgrade?");
-  const [numRounds, setNumRounds] = useState(2);
+  const [numRounds, setNumRounds] = useState(3);
   const [isRunningSimulation, setIsRunningSimulation] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
   const [simulationLog, setSimulationLog] = useState([]);
@@ -486,7 +427,7 @@ export default function HumanityPhase1() {
   const lastRoundRef = useRef(-1);
   const streamLogRef = useRef([]);
 
-  /* ─ Preview generation ─ */
+  /* G�� Preview generation G�� */
   const requestPreview = useCallback(async () => {
     setLoadingPreview(true);
     const ag = { name: "Prototype-X", traits, role, culture, education, income };
@@ -495,7 +436,7 @@ export default function HumanityPhase1() {
     setLoadingPreview(false);
   }, [traits, role, culture, education, income]);
 
-  /* ─ Swarm: Generate personas — backend first, then local fallback ─ */
+  /* G�� Swarm: Generate personas G�� backend first, then local fallback G�� */
   const handleAllocateIdentities = useCallback(async () => {
     setIsAllocating(true);
     setActionAggregate(null);
@@ -516,7 +457,7 @@ export default function HumanityPhase1() {
     setIsAllocating(false);
   }, [swarmCount, scenario]);
 
-  /* ─ Swarm: Run simulation via backend WebSocket — stream turns into graph + log; live output updates ─ */
+  /* G�� Swarm: Run simulation via backend WebSocket G�� stream turns into graph + log; live output updates G�� */
   const handleRunSimulationBackend = useCallback(() => {
     const popSize = Math.min(Math.max(1, swarmCount), 50);
     setBackendReport(null);
@@ -604,7 +545,7 @@ export default function HumanityPhase1() {
     });
   }, [swarmAgents.length, swarmCount, scenario, numRounds]);
 
-  /* ─ Swarm: Strand links only (optional, for graph structure) ─ */
+  /* G�� Swarm: Strand links only (optional, for graph structure) G�� */
   const handleSimulateStrand = useCallback(async () => {
     if (swarmAgents.length === 0) return;
     setIsSimulating(true);
@@ -618,7 +559,7 @@ export default function HumanityPhase1() {
     }
   }, [swarmAgents, activeTask]);
 
-  // ═══════════ RENDER ═══════════
+  // G��G��G��G��G��G��G��G��G��G��G�� RENDER G��G��G��G��G��G��G��G��G��G��G��
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: FONT_BODY }}>
       <style>{`
@@ -659,7 +600,7 @@ export default function HumanityPhase1() {
 
       <div className="noise" />
 
-      {/* ═══ HEADER ═══ */}
+      {/* G��G��G�� HEADER G��G��G�� */}
       <header style={{
         padding: "14px 28px", borderBottom: `1px solid ${T.border}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -682,15 +623,15 @@ export default function HumanityPhase1() {
             <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.03em", fontFamily: FONT_DISPLAY }}>
               HUMAINI<span style={{ color: T.blue }}>.</span>TY
             </div>
-            <div style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO, letterSpacing: "0.1em" }}>PHASE 1 — AGENT ARCHITECT</div>
+            <div style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO, letterSpacing: "0.1em" }}>PHASE 1 G�� AGENT ARCHITECT</div>
           </div>
         </div>
 
         {/* Nav Tabs */}
         <div style={{ display: "flex", gap: 2, background: T.panel, borderRadius: 10, padding: 3, border: `1px solid ${T.border}` }}>
           {[
-            { key: "architect", label: "Architect", icon: "◈" },
-            { key: "swarm", label: "Swarm Network", icon: "🕸" },
+            { key: "architect", label: "Architect", icon: "G��" },
+            { key: "swarm", label: "Swarm Network", icon: "=��+" },
           ].map(tab => (
             <button key={tab.key} onClick={() => setView(tab.key)} style={{
               padding: "7px 18px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -705,11 +646,11 @@ export default function HumanityPhase1() {
         </div>
       </header>
 
-      {/* ═══ ARCHITECT VIEW ═══ */}
+      {/* G��G��G�� ARCHITECT VIEW G��G��G�� */}
       {view === "architect" && (
         <div style={{ display: "grid", gridTemplateColumns: "380px 1fr 340px", minHeight: "calc(100vh - 63px)" }}>
 
-          {/* ── Left: Big Five Sliders ── */}
+          {/* G��G�� Left: Big Five Sliders G��G�� */}
           <div style={{ borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}` }}>
               <h2 style={{ fontSize: 14, fontWeight: 700, fontFamily: FONT_DISPLAY, margin: 0, letterSpacing: "-0.02em" }}>Personality Configuration</h2>
@@ -759,7 +700,7 @@ export default function HumanityPhase1() {
             </div>
           </div>
 
-          {/* ── Center: Preview + Biases ── */}
+          {/* G��G�� Center: Preview + Biases G��G�� */}
           <div style={{ display: "flex", flexDirection: "column", overflow: "auto" }}>
             <div style={{ padding: "16px 24px", borderBottom: `1px solid ${T.border}` }}>
               <h2 style={{ fontSize: 14, fontWeight: 700, fontFamily: FONT_DISPLAY, margin: 0 }}>Persona Preview</h2>
@@ -780,7 +721,7 @@ export default function HumanityPhase1() {
                 fontFamily: FONT_MONO, cursor: loadingPreview ? "wait" : "pointer",
                 transition: "background .3s",
               }}>
-                {loadingPreview ? "◎ GENERATING PREVIEW..." : "◈ GENERATE PERSONA PREVIEW"}
+                {loadingPreview ? "G�� GENERATING PREVIEW..." : "G�� GENERATE PERSONA PREVIEW"}
               </button>
 
               {/* Preview Card */}
@@ -803,7 +744,7 @@ export default function HumanityPhase1() {
                 </div>
               )}
 
-              {/* ── Cognitive Bias Toggles (A3) ── */}
+              {/* G��G�� Cognitive Bias Toggles (A3) G��G�� */}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <h3 style={{ fontSize: 13, fontWeight: 700, fontFamily: FONT_DISPLAY, margin: 0 }}>Cognitive Bias Layer</h3>
@@ -819,7 +760,7 @@ export default function HumanityPhase1() {
                 </div>
                 {Object.values(activeBiases).some(Boolean) && (
                   <div style={{ marginTop: 10, padding: 10, background: T.amberS, border: `1px solid ${T.amber}22`, borderRadius: 8, animation: "slideUp .3s ease" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: T.amber, fontFamily: FONT_MONO, letterSpacing: "0.06em", marginBottom: 3 }}>⚠ METHODOLOGY NOTE</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.amber, fontFamily: FONT_MONO, letterSpacing: "0.06em", marginBottom: 3 }}>G�� METHODOLOGY NOTE</div>
                     <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.4 }}>Biases are prompt-engineered approximations with effect-size weights from published research. They are not genuine cognitive processes.</div>
                   </div>
                 )}
@@ -827,7 +768,7 @@ export default function HumanityPhase1() {
             </div>
           </div>
 
-          {/* ── Right: Demographics + Memory ── */}
+          {/* G��G�� Right: Demographics + Memory G��G�� */}
           <div style={{ borderLeft: `1px solid ${T.border}`, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 18px", borderBottom: `1px solid ${T.border}` }}>
               <h2 style={{ fontSize: 14, fontWeight: 700, fontFamily: FONT_DISPLAY, margin: 0 }}>Socio-Demographics</h2>
@@ -854,7 +795,7 @@ export default function HumanityPhase1() {
                 </div>
               ))}
 
-              {/* ── Memory Depth Config (A4) ── */}
+              {/* G��G�� Memory Depth Config (A4) G��G�� */}
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 10, textTransform: "uppercase" }}>Memory Configuration (A4)</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -875,7 +816,7 @@ export default function HumanityPhase1() {
                 </div>
               </div>
 
-              {/* ── Identity Summary ── */}
+              {/* G��G�� Identity Summary G��G�� */}
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 10, textTransform: "uppercase" }}>Agent DNA Summary</div>
                 <div style={{ padding: 14, background: T.panelHi, borderRadius: 10, border: `1px solid ${T.border}` }}>
@@ -900,65 +841,9 @@ export default function HumanityPhase1() {
         </div>
       )}
 
-      {/* ═══ SWARM NETWORK VIEW (Strand Pattern) ═══ */}
+      {/* G��G��G�� SWARM NETWORK VIEW (Strand Pattern) G��G��G�� */}
       {view === "swarm" && (
-        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 63px)", overflow: "hidden" }}>
-          {/* Top: Overall sentiment + example agent suggestions */}
-          {(actionAggregate || simulationLog.length > 0 || swarmAgents.some(a => a.lastMessage)) && (
-            <div style={{
-              flexShrink: 0,
-              padding: "12px 20px",
-              borderBottom: `1px solid ${T.border}`,
-              background: T.panelHi,
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 20,
-              alignItems: "flex-start",
-            }}>
-            <div style={{ minWidth: 200 }}>
-              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6, textTransform: "uppercase" }}>Overall sentiment</div>
-              <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-                {actionAggregate ? (
-                  <>
-                    <span style={{ color: T.green, fontSize: 13, fontWeight: 700 }}>Stay {actionAggregate.stayPct}%</span>
-                    <span style={{ color: T.rose, fontSize: 13, fontWeight: 700 }}>Churn {actionAggregate.churnPct}%</span>
-                    <span style={{ color: T.amber, fontSize: 13, fontWeight: 700 }}>Downgrade {actionAggregate.downgradePct}%</span>
-                  </>
-                ) : (
-                  <span style={{ color: T.text3, fontSize: 12 }}>Run simulation to see sentiment.</span>
-                )}
-              </div>
-            </div>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6, textTransform: "uppercase" }}>Example agent suggestions</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {(() => {
-                  const examples = [];
-                  if (simulationLog.length > 0) {
-                    simulationLog.slice(-6).forEach(entry => {
-                      if (entry.agentName != null && entry.message) examples.push({ name: entry.agentName, message: entry.message, action: entry.action });
-                    });
-                  }
-                  if (examples.length < 3) {
-                    swarmAgents.filter(a => a.lastMessage).slice(0, 3 - examples.length).forEach(a => {
-                      examples.push({ name: a.name, message: a.lastMessage, action: a.lastAction });
-                    });
-                  }
-                  return examples.slice(0, 3).map((ex, i) => (
-                    <div key={i} style={{ fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
-                      <span style={{ color: T.blue, fontWeight: 600 }}>{ex.name}</span>
-                      {ex.action && <span style={{ color: T.text4, marginLeft: 6 }}>({ex.action})</span> — {String(ex.message).slice(0, 80)}{String(ex.message).length > 80 ? "…" : ""}
-                    </div>
-                  ));
-                })()}
-                {simulationLog.length === 0 && !swarmAgents.some(a => a.lastMessage) && (
-                  <span style={{ color: T.text3, fontSize: 12 }}>Run simulation to see example agent messages.</span>
-                )}
-              </div>
-            </div>
-          </div)}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(320px, 360px)", flex: 1, minHeight: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(320px, 360px)", height: "calc(100vh - 63px)", overflow: "hidden" }}>
           {/* Main Visualizer Area */}
           <div style={{ padding: 20, position: "relative", minWidth: 0 }}>
             {swarmAgents.length === 0 ? (
@@ -984,7 +869,7 @@ export default function HumanityPhase1() {
                     boxShadow: isAllocating ? "none" : `0 4px 20px ${T.blueG}`,
                   }}
                 >
-                  {isAllocating ? "Generating…" : "◈ Generate personas"}
+                  {isAllocating ? "GeneratingGǪ" : "G�� Generate personas"}
                 </button>
               </div>
             ) : (
@@ -1029,7 +914,7 @@ export default function HumanityPhase1() {
                 </div>
                 <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO }}>
                   {(hoveredAgent.reasoningHistory || []).slice(-3).map((h, i) => (
-                    <div key={i}>R{h.round}: {h.stance} · {h.reasoning}</div>
+                    <div key={i}>R{h.round}: {h.stance} -+ {h.reasoning}</div>
                   ))}
                 </div>
               </div>
@@ -1041,7 +926,7 @@ export default function HumanityPhase1() {
                 <div style={{ background: T.panel, padding: "14px 28px", borderRadius: 12, border: `1px solid ${T.blue}44`, display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ width: 18, height: 18, border: `2px solid ${T.blue}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
                   <span style={{ fontSize: 13, fontFamily: FONT_MONO, color: T.blue }}>
-                    {isRunningSimulation ? `Round ${currentRound}/${numRounds} — agents reasoning…` : "Orchestrating strand…"}
+                    {isRunningSimulation ? `Round ${currentRound}/${numRounds} G�� agents reasoningGǪ` : "Orchestrating strandGǪ"}
                   </span>
                 </div>
               </div>
@@ -1078,7 +963,7 @@ export default function HumanityPhase1() {
                     cursor: isAllocating ? "wait" : "pointer", transition: "all .2s"
                   }}
                 >
-                  {isAllocating ? "◈ GENERATING PERSONAS..." : "◈ GENERATE PERSONAS (MISTRAL)"}
+                  {isAllocating ? "G�� GENERATING PERSONAS..." : "G�� GENERATE PERSONAS (MISTRAL)"}
                 </button>
               </div>
             </div>
@@ -1113,7 +998,7 @@ export default function HumanityPhase1() {
                     boxShadow: !isRunningSimulation ? `0 4px 12px ${T.blue}33` : "none"
                   }}
                 >
-                  {isRunningSimulation ? `◎ ROUND ${currentRound}/${numRounds}...` : "▶ RUN SIMULATION (BACKEND)"}
+                  {isRunningSimulation ? `G�� ROUND ${currentRound}/${numRounds}...` : "G�� RUN SIMULATION (BACKEND)"}
                 </button>
               </div>
             </div>
@@ -1124,7 +1009,7 @@ export default function HumanityPhase1() {
                 <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>Output</div>
                 <div style={{ padding: 16, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12 }}>
                   <div style={{ fontSize: 11, color: T.text2, fontFamily: FONT_MONO, marginBottom: 10 }}>
-                    Population · {swarmAgents.length} active (target {swarmCount})
+                    Population -+ {swarmAgents.length} active (target {swarmCount})
                   </div>
                   {actionAggregate && (
                     <>
@@ -1145,6 +1030,35 @@ export default function HumanityPhase1() {
                   )}
                 </div>
               </div>
+            {/* Context summary: predicted perception of adoption / policy */}
+            {(actionAggregate || backendReport) && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>Predicted perception</div>
+                <div style={{ padding: 12, background: T.panelHi, border: `1px solid ${T.border}`, borderRadius: 12, fontSize: 11, color: T.text2, lineHeight: 1.5 }}>
+                  {backendReport && (backendReport.predicted_policy_support || backendReport.consensus_level) ? (
+                    <p style={{ margin: 0 }}>
+                      {String(backendReport.predicted_policy_support || "").trim() || "Based on the simulation, "}
+                      {backendReport.consensus_level ? `Consensus: ${String(backendReport.consensus_level).toLowerCase()}. ` : ""}
+                      {Array.isArray(backendReport.major_arguments) && backendReport.major_arguments.length > 0
+                        ? `Key themes: ${backendReport.major_arguments.slice(0, 2).join("; ")}.`
+                        : "Run simulation to see adoption and policy perception."}
+                    </p>
+                  ) : actionAggregate ? (
+                    <p style={{ margin: 0 }}>
+                      Based on this population, the policy is perceived as{" "}
+                      {actionAggregate.stayPct >= 50 ? "broadly supportive" : actionAggregate.churnPct >= 40 ? "controversial or opposed" : "mixed"} -
+                      {actionAggregate.stayPct}% would stay, {actionAggregate.churnPct}% churn, {actionAggregate.downgradePct}% downgrade.
+                      Adoption likelihood is {actionAggregate.stayPct >= 55 ? "high" : actionAggregate.stayPct >= 35 ? "moderate" : "low"}.
+                    </p>
+                  ) : (
+                    <p style={{ margin: 0 }}>Run a simulation to see predicted perception of adoption and policy.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            
+            
             )}
 
             {/* Backend report (consensus, arguments, etc.) */}
@@ -1152,8 +1066,8 @@ export default function HumanityPhase1() {
               <div style={{ marginBottom: 24 }}>
                 <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>Backend report</div>
                 <div style={{ padding: 12, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, maxHeight: 160, overflowY: "auto", fontSize: 11, color: T.text2, lineHeight: 1.5 }}>
-                  <div><strong>Consensus:</strong> {String(backendReport.consensus_level ?? "—")}</div>
-                  <div style={{ marginTop: 6 }}><strong>Policy support:</strong> {String(backendReport.predicted_policy_support ?? "—")}</div>
+                  <div><strong>Consensus:</strong> {String(backendReport.consensus_level ?? "G��")}</div>
+                  <div style={{ marginTop: 6 }}><strong>Policy support:</strong> {String(backendReport.predicted_policy_support ?? "G��")}</div>
                   {Array.isArray(backendReport.major_arguments) && backendReport.major_arguments.length > 0 && (
                     <div style={{ marginTop: 6 }}><strong>Arguments:</strong> {backendReport.major_arguments.join("; ")}</div>
                   )}
@@ -1218,7 +1132,7 @@ export default function HumanityPhase1() {
                     cursor: (isSimulating || swarmAgents.length === 0) ? "not-allowed" : "pointer"
                   }}
                 >
-                  {isSimulating ? "…" : "Update graph links"}
+                  {isSimulating ? "GǪ" : "Update graph links"}
                 </button>
               </div>
             </div>
@@ -1230,7 +1144,7 @@ export default function HumanityPhase1() {
                   <Fingerprint traits={selectedAgent.traits} size={32} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{selectedAgent.name}</div>
-                    <div style={{ fontSize: 10, color: T.text3 }}>{selectedAgent.role}{selectedAgent.profession ? ` · ${selectedAgent.profession}` : ""}</div>
+                    <div style={{ fontSize: 10, color: T.text3 }}>{selectedAgent.role}{selectedAgent.profession ? ` -+ ${selectedAgent.profession}` : ""}</div>
                     {selectedAgent.lastAction && (
                       <span style={{ display: "inline-block", marginTop: 4, padding: "2px 6px", fontSize: 9, fontFamily: FONT_MONO, fontWeight: 600, background: selectedAgent.lastAction === "Stay" ? T.greenS : selectedAgent.lastAction === "Churn" ? T.roseS : T.amberS, color: selectedAgent.lastAction === "Stay" ? T.green : selectedAgent.lastAction === "Churn" ? T.rose : T.amber, borderRadius: 4 }}>{selectedAgent.lastAction}</span>
                     )}
@@ -1254,13 +1168,12 @@ export default function HumanityPhase1() {
                 {Array.isArray(selectedAgent.reasoningHistory) && selectedAgent.reasoningHistory.length > 0 && (
                   <div style={{ marginTop: 6, fontSize: 9, color: T.text4, fontFamily: FONT_MONO, lineHeight: 1.35 }}>
                     {selectedAgent.reasoningHistory.slice(-4).map((h, i) => (
-                      <div key={i}>R{h.round}: {h.stance} · {h.reasoning}</div>
+                      <div key={i}>R{h.round}: {h.stance} -+ {h.reasoning}</div>
                     ))}
                   </div>
                 )}
               </div>
             )}
-          </div>
           </div>
         </div>
       )}
