@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SwarmGraph from "./SwarmGraph";
-import { generateSwarmIdentities, getSwarmInteraction } from "./ai-service";
-import { Users, Network, Cpu, Sliders } from "lucide-react";
+import { getSwarmInteraction } from "./ai-service";
+import { generateAgents as generateAgentsBackend, connectSimulationStream } from "./api";
 
 // ═══════════════════════════════════════════════════════════════════════
 // HUMAINI.TY — Phase 1: Agent Architect & Population Generator
@@ -65,6 +65,88 @@ const uid = () => `ag_${++_uid}_${(Date.now() % 1e6).toString(36)}`;
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const lerp = (a, b, t) => a + (b - a) * t;
+
+function archetypeFromTraits(traits = {}) {
+  const O = Number(traits.O || 5);
+  const C = Number(traits.C || 5);
+  const E = Number(traits.E || 5);
+  const A = Number(traits.A || 5);
+  const N = Number(traits.N || 5);
+  const candidates = [
+    { name: "Visionary Analyst", score: O * 0.6 + C * 0.4 },
+    { name: "Pragmatic Skeptic", score: (10 - O) * 0.6 + (10 - A) * 0.4 },
+    { name: "Community Builder", score: A * 0.55 + E * 0.45 },
+    { name: "Cautious Realist", score: N * 0.6 + C * 0.4 },
+    { name: "Independent Challenger", score: (10 - A) * 0.55 + E * 0.45 },
+  ];
+  return candidates.sort((a, b) => b.score - a.score)[0].name;
+}
+
+function localFallbackSwarm(count) {
+  const n = Math.min(Math.max(1, count), 50);
+  const templates = [
+    { role: "Teacher", persona: "Budget-focused household planner", msg: "I can stay for now, but only if pricing stabilizes.", action: "Stay" },
+    { role: "Nurse", persona: "Service-quality first evaluator", msg: "I'm likely to stay because reliability matters most to me.", action: "Stay" },
+    { role: "Retail Manager", persona: "Price-sensitive practical buyer", msg: "At this price, churn is the more rational option for me.", action: "Churn" },
+    { role: "Engineer", persona: "Analytical optimization seeker", msg: "Downgrading keeps value while limiting unnecessary spend.", action: "Downgrade" },
+    { role: "Driver", persona: "Cost-pressure risk minimizer", msg: "I cannot justify this increase, so I would switch.", action: "Churn" },
+  ];
+  return Array.from({ length: n }, (_, i) => {
+    const t = templates[i % templates.length];
+    const traits = randomTraits({});
+    const confidence = clamp(0.48 + (traits.C - traits.N) * 0.03 + (traits.E - 5) * 0.015, 0.36, 0.92);
+    return {
+      id: `agent-${i + 1}`,
+      name: `${pick(FIRST)}-${100 + i}`,
+      role: t.role,
+      culture: pick(CULTURES),
+      education: pick(EDUCATION),
+      income: pick(INCOME),
+      traits,
+      archetype: archetypeFromTraits(traits),
+      confidence: Number(confidence.toFixed(2)),
+      lastAction: t.action,
+      lastReasoning: "The agent balances budget pressure, utility, and perceived switching cost.",
+      lastMessage: t.msg,
+      thinkingProcess: "Weighing service value against price elasticity and personal risk tolerance.",
+      reasoningHistory: [{ round: 0, stance: t.action, reasoning: "Initial prior before social influence effects." }],
+      persona: t.persona,
+    };
+  });
+}
+
+/** Map backend /generate_agents response to swarm agent shape for SwarmGraph + sidebar */
+function backendAgentsToSwarm(agents, scenarioForFallback = "") {
+  if (!Array.isArray(agents) || agents.length === 0) return [];
+  return agents.map((a, i) => {
+    const ocean = a.ocean || {};
+    const toTrait = (v) => Math.min(10, Math.max(1, Math.round(Number(v) || 5)));
+    const traits = {
+      O: toTrait(ocean.openness),
+      C: toTrait(ocean.conscientiousness),
+      E: toTrait(ocean.extraversion),
+      A: toTrait(ocean.agreeableness),
+      N: toTrait(ocean.neuroticism),
+    };
+    return {
+      id: `agent-${i + 1}`,
+      name: a.name || `Agent ${i + 1}`,
+      role: a.occupation || "Participant",
+      culture: a.location || "—",
+      education: "—",
+      income: a.income_bracket || "—",
+      traits,
+      archetype: archetypeFromTraits(traits),
+      confidence: 0.55,
+      lastAction: null,
+      lastReasoning: null,
+      lastMessage: null,
+      thinkingProcess: "",
+      reasoningHistory: [],
+      persona: [a.occupation, a.location, a.political_leaning].filter(Boolean).join(" · ") || "—",
+    };
+  });
+}
 
 /* ─── Generate random traits respecting bias config ─── */
 function randomTraits(biasConfig = {}) {
@@ -323,13 +405,9 @@ export default function HumanityPhase1() {
   const [loadingPreview, setLoadingPreview] = useState(false);
 
   /* ─ State: Population Generator ─ */
-  const [view, setView] = useState("architect"); // architect | generator | gallery
-  const [popCount, setPopCount] = useState(16);
-  const [distPreset, setDistPreset] = useState(0);
-  const [population, setPopulation] = useState([]);
-  const [generating, setGenerating] = useState(false);
+  const [view, setView] = useState("architect"); // architect | swarm
   const [selectedAgent, setSelectedAgent] = useState(null);
-  const [gallerySort, setGallerySort] = useState("name"); // name | dominant | sentiment
+  const [hoveredAgent, setHoveredAgent] = useState(null);
 
   /* ─ State: Swarm Network (Strand Pattern) ─ */
   const [swarmAgents, setSwarmAgents] = useState([]);
@@ -338,6 +416,16 @@ export default function HumanityPhase1() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [swarmCount, setSwarmCount] = useState(25);
   const [activeTask, setActiveTask] = useState("Coordinate resources for emergency response");
+  const [scenario, setScenario] = useState("Price increase of 15%. Do you stay, churn, or downgrade?");
+  const [numRounds, setNumRounds] = useState(3);
+  const [isRunningSimulation, setIsRunningSimulation] = useState(false);
+  const [currentRound, setCurrentRound] = useState(0);
+  const [simulationLog, setSimulationLog] = useState([]);
+  const [actionAggregate, setActionAggregate] = useState(null);
+  const [backendReport, setBackendReport] = useState(null);
+  const lastTurnAgentRef = useRef(null);
+  const lastRoundRef = useRef(-1);
+  const streamLogRef = useRef([]);
 
   /* ─ Preview generation ─ */
   const requestPreview = useCallback(async () => {
@@ -348,69 +436,128 @@ export default function HumanityPhase1() {
     setLoadingPreview(false);
   }, [traits, role, culture, education, income]);
 
-  /* ─ Population generation ─ */
-  const handleGenerate = useCallback(() => {
-    setGenerating(true);
-    setTimeout(() => {
-      const dist = DIST_PRESETS[distPreset]?.config || {};
-      const pop = generatePopulation(popCount, dist);
-      setPopulation(pop);
-      setGenerating(false);
-      setView("gallery");
-    }, 600);
-  }, [popCount, distPreset]);
-
-  /* ─ Swarm: Identity Allocation (Mistral) ─ */
+  /* ─ Swarm: Generate personas — backend first, then local fallback ─ */
   const handleAllocateIdentities = useCallback(async () => {
     setIsAllocating(true);
+    setActionAggregate(null);
+    setSimulationLog([]);
+    setSwarmLinks([]);
     try {
-      const identities = await generateSwarmIdentities(swarmCount);
-      setSwarmAgents(identities);
-      // Initialize with zero links
-      setSwarmLinks([]);
+      const res = await generateAgentsBackend(scenario, Math.min(swarmCount, 50));
+      const agents = backendAgentsToSwarm(res.agents || [], scenario);
+      if (agents.length > 0) {
+        setSwarmAgents(agents);
+        setIsAllocating(false);
+        return;
+      }
     } catch (err) {
-      console.error(err);
-    } finally {
-      setIsAllocating(false);
+      console.warn("Backend generate_agents failed, using local personas:", err);
     }
-  }, [swarmCount]);
+    setSwarmAgents(localFallbackSwarm(swarmCount));
+    setIsAllocating(false);
+  }, [swarmCount, scenario]);
 
-  /* ─ Swarm: Strand Simulation (Bedrock) ─ */
+  /* ─ Swarm: Run simulation via backend WebSocket — stream turns into graph + log; live output updates ─ */
+  const handleRunSimulationBackend = useCallback(() => {
+    const popSize = Math.min(Math.max(1, swarmCount), 50);
+    setBackendReport(null);
+    setSimulationLog([]);
+    setActionAggregate({ stayPct: 0, churnPct: 0, downgradePct: 0 });
+    streamLogRef.current = [];
+    lastTurnAgentRef.current = null;
+    lastRoundRef.current = -1;
+    setIsRunningSimulation(true);
+    setCurrentRound(1);
+
+    const linkMap = new Map();
+    const linkKey = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
+    const runningVotes = { support: 0, oppose: 0, undecided: 0 };
+
+    const updateLiveOutput = () => {
+      const total = runningVotes.support + runningVotes.oppose + runningVotes.undecided;
+      if (total === 0) return;
+      setActionAggregate({
+        stayPct: Math.round((runningVotes.support / total) * 100),
+        churnPct: Math.round((runningVotes.oppose / total) * 100),
+        downgradePct: Math.round((runningVotes.undecided / total) * 100),
+      });
+    };
+
+    const ws = connectSimulationStream(scenario, popSize, numRounds, (msg) => {
+      if (msg.type === "agents_generated" && Array.isArray(msg.agents) && msg.agents.length > 0) {
+        setSwarmAgents(backendAgentsToSwarm(msg.agents, scenario));
+      }
+      if (msg.type === "turn") {
+        const { round, agent_id, agent_name, message, stance, reasoning, confidence, archetype } = msg;
+        setCurrentRound(round + 1);
+        const prev = lastTurnAgentRef.current;
+        const pr = lastRoundRef.current;
+        if (prev && pr === round) {
+          const key = linkKey(prev, agent_id);
+          if (!linkMap.has(key)) linkMap.set(key, { source: prev, target: agent_id, weight: 0 });
+          linkMap.get(key).weight += 1;
+          setSwarmLinks(Array.from(linkMap.values()));
+        }
+        lastTurnAgentRef.current = agent_id;
+        lastRoundRef.current = round;
+
+        if (stance === "support") runningVotes.support += 1;
+        else if (stance === "oppose") runningVotes.oppose += 1;
+        else runningVotes.undecided += 1;
+        updateLiveOutput();
+
+        const action = stance === "support" ? "Stay" : stance === "oppose" ? "Churn" : "Undecided";
+        setSwarmAgents(prev => prev.map(a => {
+          if (a.id !== agent_id) return a;
+          const history = Array.isArray(a.reasoningHistory) ? a.reasoningHistory : [];
+          return {
+            ...a,
+            archetype: archetype || a.archetype || archetypeFromTraits(a.traits || {}),
+            confidence: Number(confidence ?? a.confidence ?? 0.55),
+            lastAction: action,
+            lastReasoning: reasoning || a.lastReasoning || "",
+            lastMessage: message,
+            thinkingProcess: `Round ${round + 1}: ${reasoning || "Updating stance from social signals."}`,
+            reasoningHistory: [...history, { round: round + 1, stance: action, reasoning: reasoning || "No explicit reasoning returned." }].slice(-8),
+          };
+        }));
+        streamLogRef.current.push({ round: round + 1, agentName: agent_name, message, action, reasoning, confidence, archetype });
+        setSimulationLog(Array.from(streamLogRef.current));
+      }
+      if (msg.type === "report") {
+        const beliefs = msg.final_beliefs || [];
+        const support = beliefs.filter(b => b.belief === "support").length;
+        const oppose = beliefs.filter(b => b.belief === "oppose").length;
+        const undecided = beliefs.filter(b => b.belief === "undecided").length;
+        const total = beliefs.length || 1;
+        setActionAggregate({
+          stayPct: Math.round((support / total) * 100),
+          churnPct: Math.round((oppose / total) * 100),
+          downgradePct: Math.round((undecided / total) * 100),
+        });
+        setBackendReport(msg.report || null);
+        setIsRunningSimulation(false);
+      }
+      if (msg.type === "error") {
+        console.error("Backend simulation error:", msg.message);
+        setIsRunningSimulation(false);
+      }
+    });
+  }, [swarmAgents.length, swarmCount, scenario, numRounds]);
+
+  /* ─ Swarm: Strand links only (optional, for graph structure) ─ */
   const handleSimulateStrand = useCallback(async () => {
     if (swarmAgents.length === 0) return;
     setIsSimulating(true);
     try {
       const links = await getSwarmInteraction(swarmAgents, activeTask);
-      setSwarmLinks(links);
+      setSwarmLinks(links || []);
     } catch (err) {
       console.error(err);
     } finally {
       setIsSimulating(false);
     }
   }, [swarmAgents, activeTask]);
-
-  /* ─ Stats for gallery header ─ */
-  const popStats = useMemo(() => {
-    if (population.length === 0) return null;
-    const avg = {};
-    B5_KEYS.forEach(k => { avg[k] = (population.reduce((s, a) => s + a.traits[k], 0) / population.length).toFixed(1); });
-    const dominant = B5_KEYS.reduce((best, k) => parseFloat(avg[k]) > parseFloat(avg[best]) ? k : best, "O");
-    return { avg, dominant, count: population.length };
-  }, [population]);
-
-  /* ─ Sorted gallery ─ */
-  const sortedPop = useMemo(() => {
-    const copy = [...population];
-    if (gallerySort === "name") return copy.sort((a, b) => a.name.localeCompare(b.name));
-    if (gallerySort === "dominant") {
-      return copy.sort((a, b) => {
-        const da = B5_KEYS.reduce((best, k) => a.traits[k] > a.traits[best] ? k : best, "O");
-        const db = B5_KEYS.reduce((best, k) => b.traits[k] > b.traits[best] ? k : best, "O");
-        return da.localeCompare(db);
-      });
-    }
-    return copy;
-  }, [population, gallerySort]);
 
   // ═══════════ RENDER ═══════════
   return (
@@ -484,9 +631,7 @@ export default function HumanityPhase1() {
         <div style={{ display: "flex", gap: 2, background: T.panel, borderRadius: 10, padding: 3, border: `1px solid ${T.border}` }}>
           {[
             { key: "architect", label: "Architect", icon: "◈" },
-            { key: "generator", label: "Population", icon: "◇" },
             { key: "swarm", label: "Swarm Network", icon: "🕸" },
-            { key: "gallery", label: `Gallery${population.length > 0 ? ` (${population.length})` : ""}`, icon: "▦" },
           ].map(tab => (
             <button key={tab.key} onClick={() => setView(tab.key)} style={{
               padding: "7px 18px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -696,252 +841,93 @@ export default function HumanityPhase1() {
         </div>
       )}
 
-      {/* ═══ POPULATION GENERATOR VIEW ═══ */}
-      {view === "generator" && (
-        <div style={{ maxWidth: 680, margin: "0 auto", padding: "40px 24px", animation: "slideUp .4s ease" }}>
-          <div style={{ textAlign: "center", marginBottom: 36 }}>
-            <h2 style={{ fontSize: 28, fontWeight: 800, fontFamily: FONT_DISPLAY, letterSpacing: "-0.03em", margin: "0 0 8px" }}>
-              Population<span style={{ color: T.blue }}>.</span>Generator
-            </h2>
-            <p style={{ fontSize: 13, color: T.text3, maxWidth: 460, margin: "0 auto", lineHeight: 1.5 }}>
-              Batch-create agent populations with configurable trait distributions. Each agent receives randomised secondary traits while respecting distribution constraints.
-            </p>
-          </div>
-
-          {/* Agent Count */}
-          <div style={{ padding: 20, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 14, marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, fontFamily: FONT_MONO, color: T.text2 }}>AGENT COUNT</span>
-              <span style={{ fontSize: 32, fontWeight: 800, color: T.blue, fontFamily: FONT_DISPLAY }}>{popCount}</span>
-            </div>
-            <input type="range" min={4} max={100} value={popCount} onChange={e => setPopCount(parseInt(e.target.value))} style={{ width: "100%", height: 4, cursor: "pointer", accentColor: T.blue }} />
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 10, color: T.text4, fontFamily: FONT_MONO }}>
-              <span>4</span>
-              <span>25</span>
-              <span>50</span>
-              <span>75</span>
-              <span>100</span>
-            </div>
-            {/* Quick buttons */}
-            <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
-              {[8, 16, 25, 50, 100].map(n => (
-                <button key={n} onClick={() => setPopCount(n)} style={{
-                  flex: 1, padding: "6px 0", background: popCount === n ? T.blueS : "transparent",
-                  border: `1px solid ${popCount === n ? T.blue + "44" : T.border}`,
-                  borderRadius: 8, color: popCount === n ? T.blue : T.text3,
-                  fontSize: 12, fontFamily: FONT_MONO, fontWeight: 600, cursor: "pointer", transition: "all .2s",
-                }}>{n}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Distribution Presets */}
-          <div style={{ padding: 20, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 14, marginBottom: 20 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, fontFamily: FONT_MONO, color: T.text2, marginBottom: 12 }}>TRAIT DISTRIBUTION</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {DIST_PRESETS.map((dp, i) => (
-                <button key={i} onClick={() => setDistPreset(i)} style={{
-                  padding: "10px 14px", textAlign: "left",
-                  background: distPreset === i ? T.blueS : "transparent",
-                  border: `1px solid ${distPreset === i ? T.blue + "44" : T.border}`,
-                  borderRadius: 10, cursor: "pointer", transition: "all .2s",
-                }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: distPreset === i ? T.blue : T.text2, fontFamily: FONT_MONO }}>{dp.label}</div>
-                  <div style={{ fontSize: 10, color: T.text4, marginTop: 2 }}>
-                    {dp.config.groups
-                      ? dp.config.groups.map(g => `${g.pct}% ${Object.entries(g.bias).map(([k, v]) => `${k}→${v}`).join(",")}`).join(" | ")
-                      : dp.config.bias
-                        ? Object.entries(dp.config.bias).map(([k, v]) => `${k}→${v}`).join(", ")
-                        : "No trait constraints"
-                    }
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Generate Button */}
-          <button onClick={handleGenerate} disabled={generating} style={{
-            width: "100%", padding: "18px 0",
-            background: generating
-              ? `linear-gradient(90deg, ${T.blueS}, ${T.violetS}, ${T.blueS})`
-              : `linear-gradient(135deg, ${T.blue}, ${T.violet})`,
-            backgroundSize: generating ? "200% 100%" : "100% 100%",
-            animation: generating ? "shimmerLine 1.2s ease infinite" : "none",
-            border: "none", borderRadius: 14, color: "#fff", fontSize: 15, fontWeight: 700,
-            fontFamily: FONT_DISPLAY, letterSpacing: "0.02em", cursor: generating ? "wait" : "pointer",
-            boxShadow: `0 4px 30px ${T.blueG}`,
-            transition: "transform .1s",
-          }}
-            onMouseDown={e => !generating && (e.target.style.transform = "scale(0.98)")}
-            onMouseUp={e => e.target.style.transform = "scale(1)"}
-          >
-            {generating ? "◎ GENERATING POPULATION..." : `◈ GENERATE ${popCount} AGENTS`}
-          </button>
-
-          {/* PRD spec reminder */}
-          <div style={{ marginTop: 16, padding: 12, background: T.greenS, border: `1px solid ${T.green}22`, borderRadius: 10 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: T.green, fontFamily: FONT_MONO, marginBottom: 3 }}>✓ PRD SPEC: A5</div>
-            <div style={{ fontSize: 11, color: T.text3, lineHeight: 1.4 }}>Batch generation target: &lt;30 seconds for 100 agents with correct trait distributions.</div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ GALLERY VIEW ═══ */}
-      {view === "gallery" && (
-        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 63px)" }}>
-          {/* Gallery Header */}
-          <div style={{ padding: "12px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, background: T.panelTop }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div>
-                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: FONT_DISPLAY }}>Agent Gallery</span>
-                <span style={{ fontSize: 12, color: T.text3, fontFamily: FONT_MONO, marginLeft: 8 }}>{population.length} agents</span>
-              </div>
-              {popStats && (
-                <div style={{ display: "flex", gap: 8 }}>
-                  {B5_KEYS.map(k => (
-                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: BIG5[k].color }} />
-                      <span style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO }}>{k}:{popStats.avg[k]}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO }}>SORT</span>
-              {["name", "dominant"].map(s => (
-                <button key={s} onClick={() => setGallerySort(s)} style={{
-                  padding: "4px 10px", background: gallerySort === s ? T.blueS : "transparent",
-                  border: `1px solid ${gallerySort === s ? T.blue + "33" : "transparent"}`,
-                  borderRadius: 6, color: gallerySort === s ? T.blue : T.text3,
-                  fontSize: 10, fontFamily: FONT_MONO, cursor: "pointer", textTransform: "uppercase",
-                }}>{s}</button>
-              ))}
-              <div style={{ width: 1, height: 20, background: T.border, margin: "0 4px" }} />
-              <button onClick={() => { setView("generator"); }} style={{
-                padding: "5px 12px", background: "transparent", border: `1px solid ${T.border}`,
-                borderRadius: 8, color: T.text2, fontSize: 11, fontFamily: FONT_MONO, cursor: "pointer",
-              }}>↻ Regenerate</button>
-            </div>
-          </div>
-
-          {/* Gallery Grid + Spotlight */}
-          <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-            {/* Grid */}
-            <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-              {population.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "60px 20px", color: T.text4 }}>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>◇</div>
-                  <div style={{ fontSize: 14 }}>No agents generated yet.</div>
-                  <button onClick={() => setView("generator")} style={{
-                    marginTop: 12, padding: "8px 20px", background: T.blueS, border: `1px solid ${T.blue}33`,
-                    borderRadius: 10, color: T.blue, fontSize: 12, fontFamily: FONT_MONO, fontWeight: 600, cursor: "pointer",
-                  }}>Go to Population Generator</button>
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(195px, 1fr))", gap: 10 }}>
-                  {sortedPop.map((agent, i) => (
-                    <AgentCard key={agent.id} agent={agent} index={i}
-                      onClick={() => setSelectedAgent(selectedAgent?.id === agent.id ? null : agent)}
-                      isSelected={selectedAgent?.id === agent.id}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Spotlight Sidebar */}
-            {selectedAgent && (
+      {/* ═══ SWARM NETWORK VIEW (Strand Pattern) ═══ */}
+      {view === "swarm" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(320px, 360px)", height: "calc(100vh - 63px)", overflow: "hidden" }}>
+          {/* Main Visualizer Area */}
+          <div style={{ padding: 20, position: "relative", minWidth: 0 }}>
+            {swarmAgents.length === 0 ? (
               <div style={{
-                width: 320, borderLeft: `1px solid ${T.border}`, background: T.panelHi,
-                overflow: "auto", flexShrink: 0, animation: "slideUp .3s ease",
+                width: "100%", height: "100%", minHeight: 380,
+                background: T.panel, border: `1px solid ${T.border}`,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 16, padding: 24,
               }}>
-                {/* Agent Header */}
-                <div style={{ padding: "16px 18px", borderBottom: `1px solid ${T.border}` }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Fingerprint traits={selectedAgent.traits} size={56} animate />
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 800, fontFamily: FONT_DISPLAY }}>{selectedAgent.name}</div>
-                      <div style={{ fontSize: 11, color: T.text3, fontFamily: FONT_MONO }}>{selectedAgent.role} · {selectedAgent.culture}</div>
-                      <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO }}>{selectedAgent.education} · {selectedAgent.income}</div>
-                    </div>
-                  </div>
+                <div style={{ fontSize: 15, color: T.text3, fontFamily: FONT_MONO }}>No agents yet</div>
+                <p style={{ fontSize: 13, color: T.text2, textAlign: "center", maxWidth: 320, margin: 0 }}>
+                  Generate personas with the button on the right, or click below to create the swarm.
+                </p>
+                <button
+                  onClick={handleAllocateIdentities}
+                  disabled={isAllocating}
+                  style={{
+                    padding: "12px 24px",
+                    background: isAllocating ? T.panelHi : `linear-gradient(135deg, ${T.blue}, ${T.violet})`,
+                    border: "none", borderRadius: 10, color: "#fff",
+                    fontSize: 13, fontWeight: 700, fontFamily: FONT_MONO,
+                    cursor: isAllocating ? "wait" : "pointer",
+                    boxShadow: isAllocating ? "none" : `0 4px 20px ${T.blueG}`,
+                  }}
+                >
+                  {isAllocating ? "Generating…" : "◈ Generate personas"}
+                </button>
+              </div>
+            ) : (
+              <SwarmGraph
+                agents={swarmAgents}
+                links={swarmLinks}
+                onNodeClick={node => setSelectedAgent(swarmAgents.find(a => a.id === node.id))}
+                onNodeHover={node => setHoveredAgent(node ? swarmAgents.find(a => a.id === node.id) || null : null)}
+                showLastAction
+              />
+            )}
+
+            {hoveredAgent && (
+              <div style={{
+                position: "absolute",
+                left: 28,
+                top: 28,
+                width: 300,
+                zIndex: 12,
+                background: "rgba(12,14,24,0.94)",
+                border: `1px solid ${T.borderHi}`,
+                borderRadius: 12,
+                boxShadow: `0 10px 30px ${T.blueG}`,
+                padding: 12,
+                pointerEvents: "none",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: T.blue, fontFamily: FONT_MONO, fontWeight: 700 }}>{hoveredAgent.name}</div>
+                  <div style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO }}>{hoveredAgent.lastAction || "Observing"}</div>
                 </div>
-
-                <div style={{ padding: "16px 18px" }}>
-                  {/* Full trait bars */}
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 8, textTransform: "uppercase" }}>Personality Profile</div>
-                    {B5_KEYS.map(k => {
-                      const v = selectedAgent.traits[k];
-                      const b = BIG5[k];
-                      return (
-                        <div key={k} style={{ marginBottom: 10 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: b.color, fontFamily: FONT_MONO }}>{b.full}</span>
-                            <span style={{ fontSize: 18, fontWeight: 700, color: b.color, fontFamily: FONT_DISPLAY }}>{v}</span>
-                          </div>
-                          <div style={{ height: 5, background: T.border, borderRadius: 3, overflow: "hidden" }}>
-                            <div style={{ height: "100%", width: `${v * 10}%`, background: `linear-gradient(90deg, ${b.color}44, ${b.color})`, borderRadius: 3 }} />
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-                            <span style={{ fontSize: 9, color: T.text4, fontFamily: FONT_MONO }}>{b.lo}</span>
-                            <span style={{ fontSize: 9, color: T.text4, fontFamily: FONT_MONO }}>{b.hi}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Behavioral Predictions */}
-                  <div style={{ padding: 14, background: T.panel, borderRadius: 10, border: `1px solid ${T.border}`, marginBottom: 16 }}>
-                    <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 8, textTransform: "uppercase" }}>Predicted Behavioral Tendencies</div>
-                    {B5_KEYS.map(k => {
-                      const v = selectedAgent.traits[k];
-                      const b = BIG5[k];
-                      const desc = v <= 3 ? b.loDesc : v >= 8 ? b.hiDesc : `Balanced ${b.full.toLowerCase()} — adapts to context`;
-                      return (
-                        <div key={k} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "flex-start" }}>
-                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: b.color, flexShrink: 0, marginTop: 5 }} />
-                          <span style={{ fontSize: 11, color: T.text2, lineHeight: 1.4 }}>{desc}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Ready for simulation badge */}
-                  <div style={{ padding: 12, background: T.greenS, border: `1px solid ${T.green}22`, borderRadius: 10 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, animation: "breathe 2s ease infinite" }} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: T.green, fontFamily: FONT_MONO }}>SIMULATION READY</span>
-                    </div>
-                    <div style={{ fontSize: 10, color: T.text3, marginTop: 4, lineHeight: 1.3 }}>This agent is configured and can be deployed into any environment preset.</div>
-                  </div>
+                <div style={{ fontSize: 10, color: T.text2, marginBottom: 6 }}>
+                  <strong>Archetype:</strong> {hoveredAgent.archetype || archetypeFromTraits(hoveredAgent.traits || {})}
+                </div>
+                <div style={{ fontSize: 10, color: T.text2, marginBottom: 6 }}>
+                  <strong>Confidence:</strong> {Math.round((Number(hoveredAgent.confidence || 0.55)) * 100)}%
+                </div>
+                <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.35, marginBottom: 6 }}>
+                  <strong>Thinking:</strong> {hoveredAgent.thinkingProcess || "Evaluating social signals and cost-benefit tradeoffs."}
+                </div>
+                <div style={{ fontSize: 10, color: T.text3, lineHeight: 1.35, marginBottom: 6 }}>
+                  <strong>Latest reasoning:</strong> {hoveredAgent.lastReasoning || "No explicit rationale yet."}
+                </div>
+                <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO }}>
+                  {(hoveredAgent.reasoningHistory || []).slice(-3).map((h, i) => (
+                    <div key={i}>R{h.round}: {h.stance} · {h.reasoning}</div>
+                  ))}
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* ═══ SWARM NETWORK VIEW (Strand Pattern) ═══ */}
-      {view === "swarm" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", height: "calc(100vh - 63px)", overflow: "hidden" }}>
-          {/* Main Visualizer Area */}
-          <div style={{ padding: 20, position: "relative" }}>
-            <SwarmGraph
-              agents={swarmAgents}
-              links={swarmLinks}
-              onNodeClick={node => setSelectedAgent(swarmAgents.find(a => a.id === node.id))}
-            />
 
             {/* Simulation Overlay */}
-            {isSimulating && (
-              <div style={{ position: "absolute", inset: 20, background: "rgba(6, 8, 16, 0.4)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, zIndex: 10 }}>
-                <div style={{ background: T.panel, padding: "12px 24px", borderRadius: 12, border: `1px solid ${T.blue}44`, display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 16, height: 16, border: `2px solid ${T.blue}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-                  <span style={{ fontSize: 13, fontFamily: FONT_MONO, color: T.blue }}>BEDROCK ORCHESTRATING STRAND...</span>
+            {(isSimulating || isRunningSimulation) && (
+              <div style={{ position: "absolute", inset: 20, background: "rgba(6, 8, 16, 0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 16, zIndex: 10 }}>
+                <div style={{ background: T.panel, padding: "14px 28px", borderRadius: 12, border: `1px solid ${T.blue}44`, display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 18, height: 18, border: `2px solid ${T.blue}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                  <span style={{ fontSize: 13, fontFamily: FONT_MONO, color: T.blue }}>
+                    {isRunningSimulation ? `Round ${currentRound}/${numRounds} — agents reasoning…` : "Orchestrating strand…"}
+                  </span>
                 </div>
               </div>
             )}
@@ -977,39 +963,147 @@ export default function HumanityPhase1() {
                     cursor: isAllocating ? "wait" : "pointer", transition: "all .2s"
                   }}
                 >
-                  {isAllocating ? "◈ ALLOCATING..." : "◈ ALLOCATE IDENTITIES (MISTRAL)"}
+                  {isAllocating ? "◈ GENERATING PERSONAS..." : "◈ GENERATE PERSONAS (MISTRAL)"}
                 </button>
               </div>
             </div>
 
-            {/* Task Section */}
+            {/* Scenario & Simulation Loop */}
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>2. Strand Logic</div>
+              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>2. Scenario & simulation</div>
               <div style={{ padding: 16, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12 }}>
-                <label style={{ display: "block", fontSize: 10, color: T.text3, marginBottom: 8 }}>Global Swarm Task</label>
+                <label style={{ display: "block", fontSize: 10, color: T.text3, marginBottom: 6 }}>Scenario (Stay / Churn / Downgrade)</label>
+                <textarea
+                  value={scenario}
+                  onChange={e => setScenario(e.target.value)}
+                  placeholder="e.g. Price increase of 15%. Do you stay, churn, or downgrade?"
+                  style={{
+                    width: "100%", height: 56, padding: 10, background: T.bg, border: `1px solid ${T.border}`,
+                    borderRadius: 6, color: T.text, fontSize: 11, fontFamily: FONT_BODY, resize: "vertical"
+                  }}
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                  <label style={{ fontSize: 10, color: T.text3, fontFamily: FONT_MONO }}>Rounds</label>
+                  <input type="number" min={1} max={10} value={numRounds} onChange={e => setNumRounds(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))} style={{ width: 48, padding: "4px 8px", background: T.bg, border: `1px solid ${T.border}`, borderRadius: 6, color: T.text, fontSize: 11, fontFamily: FONT_MONO }} />
+                </div>
+                <button
+                  onClick={handleRunSimulationBackend}
+                  disabled={isRunningSimulation}
+                  style={{
+                    width: "100%", marginTop: 12, padding: "10px",
+                    background: isRunningSimulation ? T.panelHi : `linear-gradient(135deg, ${T.blue}, ${T.violet})`,
+                    border: "none", borderRadius: 8,
+                    color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: FONT_MONO,
+                    cursor: isRunningSimulation ? "not-allowed" : "pointer",
+                    boxShadow: !isRunningSimulation ? `0 4px 12px ${T.blue}33` : "none"
+                  }}
+                >
+                  {isRunningSimulation ? `◎ ROUND ${currentRound}/${numRounds}...` : "▶ RUN SIMULATION (BACKEND)"}
+                </button>
+              </div>
+            </div>
+
+            {/* Output Dashboard */}
+            {(actionAggregate || swarmAgents.length > 0) && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>Output</div>
+                <div style={{ padding: 16, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                  <div style={{ fontSize: 11, color: T.text2, fontFamily: FONT_MONO, marginBottom: 10 }}>
+                    Population · {swarmAgents.length} active (target {swarmCount})
+                  </div>
+                  {actionAggregate && (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, color: T.green }}>Stay</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, fontFamily: FONT_MONO }}>{actionAggregate.stayPct}%</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, color: T.rose }}>Churn</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, fontFamily: FONT_MONO }}>{actionAggregate.churnPct}%</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, color: T.amber }}>Downgrade</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: T.text, fontFamily: FONT_MONO }}>{actionAggregate.downgradePct}%</span>
+                      </div>
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.border}`, fontSize: 10, color: T.text3, lineHeight: 1.4 }}>Insights: Price-sensitive and risk-averse personas tend to churn first; loyal segments stay. Run multiple rounds to see emergent herd behavior.</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Backend report (consensus, arguments, etc.) */}
+            {backendReport && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>Backend report</div>
+                <div style={{ padding: 12, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, maxHeight: 160, overflowY: "auto", fontSize: 11, color: T.text2, lineHeight: 1.5 }}>
+                  <div><strong>Consensus:</strong> {String(backendReport.consensus_level ?? "—")}</div>
+                  <div style={{ marginTop: 6 }}><strong>Policy support:</strong> {String(backendReport.predicted_policy_support ?? "—")}</div>
+                  {Array.isArray(backendReport.major_arguments) && backendReport.major_arguments.length > 0 && (
+                    <div style={{ marginTop: 6 }}><strong>Arguments:</strong> {backendReport.major_arguments.join("; ")}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Agent messages (conversation feed) */}
+            {simulationLog.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>Agent messages</div>
+                <div style={{ padding: 12, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12, maxHeight: 180, overflowY: "auto" }}>
+                  {simulationLog.map((entry, idx) => {
+                    if (entry.agentName != null) {
+                      return (
+                        <div key={idx} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${T.border}` }}>
+                          <span style={{ fontSize: 9, color: T.blue, fontFamily: FONT_MONO, fontWeight: 600 }}>{entry.agentName}</span>
+                          <span style={{ fontSize: 9, color: T.text4, fontFamily: FONT_MONO, marginLeft: 6 }}>{entry.action}</span>
+                          <div style={{ fontSize: 10, color: T.text2, marginTop: 2, lineHeight: 1.4 }}>"{entry.message}"</div>
+                          {entry.reasoning && (
+                            <div style={{ fontSize: 9, color: T.text4, marginTop: 2, lineHeight: 1.35 }}>
+                              Reasoning: {entry.reasoning}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    const decisions = entry.decisions || [];
+                    return decisions.filter(d => d.message).map((d, i) => (
+                      <div key={`${idx}-${i}`} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${T.border}` }}>
+                        <span style={{ fontSize: 9, color: T.blue, fontFamily: FONT_MONO, fontWeight: 600 }}>{d.agentName}</span>
+                        <span style={{ fontSize: 9, color: T.text4, fontFamily: FONT_MONO, marginLeft: 6 }}>{d.action}</span>
+                        <div style={{ fontSize: 10, color: T.text2, marginTop: 2, lineHeight: 1.4 }}>"{d.message}"</div>
+                      </div>
+                    ));
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Strand links (optional) */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 12, textTransform: "uppercase" }}>3. Strand links (optional)</div>
+              <div style={{ padding: 16, background: T.panel, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                <label style={{ display: "block", fontSize: 10, color: T.text3, marginBottom: 8 }}>Task for link inference</label>
                 <textarea
                   value={activeTask}
                   onChange={e => setActiveTask(e.target.value)}
                   style={{
-                    width: "100%", height: 60, padding: 10, background: T.bg, border: `1px solid ${T.border}`,
+                    width: "100%", height: 44, padding: 8, background: T.bg, border: `1px solid ${T.border}`,
                     borderRadius: 6, color: T.text, fontSize: 11, fontFamily: FONT_BODY, resize: "none"
                   }}
                 />
-
                 <button
                   onClick={handleSimulateStrand}
                   disabled={isSimulating || swarmAgents.length === 0}
                   style={{
-                    width: "100%", marginTop: 12, padding: "10px",
-                    background: isSimulating ? T.panelHi : `linear-gradient(135deg, ${T.blue}, ${T.violet})`,
-                    border: "none", borderRadius: 8,
-                    color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: FONT_MONO,
-                    opacity: swarmAgents.length === 0 ? 0.3 : 1,
-                    cursor: (isSimulating || swarmAgents.length === 0) ? "not-allowed" : "pointer",
-                    boxShadow: swarmAgents.length > 0 ? `0 4px 12px ${T.blue}33` : "none"
+                    width: "100%", marginTop: 8, padding: "8px",
+                    background: isSimulating ? T.panelHi : T.blueS,
+                    border: `1px solid ${T.blue}44`, borderRadius: 8,
+                    color: T.blue, fontSize: 10, fontWeight: 600, fontFamily: FONT_MONO,
+                    cursor: (isSimulating || swarmAgents.length === 0) ? "not-allowed" : "pointer"
                   }}
                 >
-                  {isSimulating ? "◎ SIMULATING..." : "🕸 RUN STRAND SIMULATION"}
+                  {isSimulating ? "…" : "Update graph links"}
                 </button>
               </div>
             </div>
@@ -1021,10 +1115,34 @@ export default function HumanityPhase1() {
                   <Fingerprint traits={selectedAgent.traits} size={32} />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{selectedAgent.name}</div>
-                    <div style={{ fontSize: 10, color: T.text3 }}>{selectedAgent.role}</div>
+                    <div style={{ fontSize: 10, color: T.text3 }}>{selectedAgent.role}{selectedAgent.profession ? ` · ${selectedAgent.profession}` : ""}</div>
+                    {selectedAgent.lastAction && (
+                      <span style={{ display: "inline-block", marginTop: 4, padding: "2px 6px", fontSize: 9, fontFamily: FONT_MONO, fontWeight: 600, background: selectedAgent.lastAction === "Stay" ? T.greenS : selectedAgent.lastAction === "Churn" ? T.roseS : T.amberS, color: selectedAgent.lastAction === "Stay" ? T.green : selectedAgent.lastAction === "Churn" ? T.rose : T.amber, borderRadius: 4 }}>{selectedAgent.lastAction}</span>
+                    )}
                   </div>
                 </div>
-                <p style={{ fontSize: 10, color: T.text2, fontStyle: "italic", lineHeight: 1.4 }}>"{selectedAgent.description || selectedAgent.preview?.sketch}"</p>
+                {(selectedAgent.persona || selectedAgent.description) && (
+                  <p style={{ fontSize: 10, color: T.text2, fontStyle: "italic", lineHeight: 1.4, marginBottom: 6 }}>"{selectedAgent.persona || selectedAgent.description}"</p>
+                )}
+                <p style={{ fontSize: 9, color: T.text3, fontFamily: FONT_MONO, lineHeight: 1.3 }}>
+                  Archetype: {selectedAgent.archetype || archetypeFromTraits(selectedAgent.traits || {})}
+                </p>
+                <p style={{ fontSize: 9, color: T.text3, fontFamily: FONT_MONO, lineHeight: 1.3 }}>
+                  Confidence: {Math.round((Number(selectedAgent.confidence || 0.55)) * 100)}%
+                </p>
+                {selectedAgent.lastReasoning && (
+                  <p style={{ fontSize: 9, color: T.text4, fontFamily: FONT_MONO, lineHeight: 1.3 }}>Reasoning: {selectedAgent.lastReasoning}</p>
+                )}
+                {selectedAgent.lastMessage && (
+                  <p style={{ fontSize: 9, color: T.text3, fontStyle: "italic", marginTop: 4, lineHeight: 1.3 }}>Said: "{selectedAgent.lastMessage}"</p>
+                )}
+                {Array.isArray(selectedAgent.reasoningHistory) && selectedAgent.reasoningHistory.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 9, color: T.text4, fontFamily: FONT_MONO, lineHeight: 1.35 }}>
+                    {selectedAgent.reasoningHistory.slice(-4).map((h, i) => (
+                      <div key={i}>R{h.round}: {h.stance} · {h.reasoning}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
