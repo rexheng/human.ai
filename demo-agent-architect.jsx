@@ -82,35 +82,94 @@ function archetypeFromTraits(traits = {}) {
   return candidates.sort((a, b) => b.score - a.score)[0].name;
 }
 
+/* ─── Hardcoded fallback: diverse personas with distinct thought process and believable stats ─── */
+const FALLBACK_ROLES = [
+  "Teacher", "Nurse", "Retail Manager", "Engineer", "Driver", "Social Worker", "Chef", "Architect",
+  "Journalist", "Paramedic", "Scientist", "Lawyer", "Freelancer", "Student", "Retiree", "Care Worker",
+  "Accountant", "Artist", "Farmer", "Librarian", "Police Officer", "Electrician", "HR Manager", "Barista",
+];
+const FALLBACK_PERSONAS = [
+  "Budget-focused household planner", "Service-quality first evaluator", "Price-sensitive practical buyer",
+  "Analytical optimization seeker", "Cost-pressure risk minimizer", "Community-oriented value seeker",
+  "Risk-averse switcher", "Loyalty-weighted stayer", "Evidence-based skeptic", "Convenience maximizer",
+  "Fairness-focused critic", "Early adopter who re-evaluates", "Stable-income prioritizer", "Bargain hunter",
+  "Trust-based loyalist", "Pragmatic switcher", "Environmental + cost conscious", "Time-poor convenience buyer",
+];
+const FALLBACK_THINKING = [
+  "Weighing service value against price elasticity and personal risk tolerance.",
+  "Considering household budget impact and whether alternatives offer comparable quality.",
+  "Updating prior based on what peers in my network are doing and saying.",
+  "Balancing switching costs vs. long-term savings; loyalty discount matters.",
+  "Evaluating if the brand has crossed my acceptable price threshold.",
+  "Factoring in hassle of changing provider and potential hidden fees elsewhere.",
+  "Comparing marginal utility of the service to the marginal cost increase.",
+  "Reassessing after hearing others’ experiences; social proof is influential.",
+  "Checking whether the increase is justified by tangible improvements.",
+  "Weighing loss aversion: perceived loss from price rise vs. uncertainty of switching.",
+];
+const FALLBACK_REASONING = [
+  "Initial prior: stay if value still exceeds cost; re-evaluate each billing cycle.",
+  "Leaning stay because reliability and familiarity reduce my cognitive load.",
+  "Leaning churn: price sensitivity is high and alternatives are acceptable.",
+  "Downgrade preserves core utility while cutting cost; best of both short term.",
+  "Churn is rational at this price point given my income and usage pattern.",
+  "Stay for now; will reassess if quality drops or another offer is clearly better.",
+  "Undecided until I see how many others leave and whether the provider responds.",
+  "Strong stay: network effects and sunk cost in this ecosystem matter to me.",
+];
+
 function localFallbackSwarm(count) {
   const n = Math.min(Math.max(1, count), 50);
-  const templates = [
-    { role: "Teacher", persona: "Budget-focused household planner", msg: "I can stay for now, but only if pricing stabilizes.", action: "Stay" },
-    { role: "Nurse", persona: "Service-quality first evaluator", msg: "I'm likely to stay because reliability matters most to me.", action: "Stay" },
-    { role: "Retail Manager", persona: "Price-sensitive practical buyer", msg: "At this price, churn is the more rational option for me.", action: "Churn" },
-    { role: "Engineer", persona: "Analytical optimization seeker", msg: "Downgrading keeps value while limiting unnecessary spend.", action: "Downgrade" },
-    { role: "Driver", persona: "Cost-pressure risk minimizer", msg: "I cannot justify this increase, so I would switch.", action: "Churn" },
-  ];
+  const stayWeight = 0.42;
+  const churnWeight = 0.35;
+  const downgradeWeight = 0.23;
   return Array.from({ length: n }, (_, i) => {
-    const t = templates[i % templates.length];
     const traits = randomTraits({});
-    const confidence = clamp(0.48 + (traits.C - traits.N) * 0.03 + (traits.E - 5) * 0.015, 0.36, 0.92);
+    const roll = (i * 17 + 31) % 100 / 100;
+    const action = roll < stayWeight ? "Stay" : roll < stayWeight + churnWeight ? "Churn" : "Downgrade";
+    const role = FALLBACK_ROLES[i % FALLBACK_ROLES.length];
+    const persona = FALLBACK_PERSONAS[i % FALLBACK_PERSONAS.length];
+    const thinkingProcess = FALLBACK_THINKING[i % FALLBACK_THINKING.length];
+    const lastReasoning = FALLBACK_REASONING[i % FALLBACK_REASONING.length];
+    const msgs = {
+      Stay: [
+        "I can stay for now, but only if pricing stabilizes.",
+        "I'm likely to stay because reliability matters most to me.",
+        "Staying makes sense for me given my usage and the alternatives I've seen.",
+        "I'll stay; the hassle of switching isn't worth it yet.",
+      ],
+      Churn: [
+        "At this price, churn is the more rational option for me.",
+        "I cannot justify this increase, so I would switch.",
+        "I'm leaning toward leaving unless there's a meaningful retention offer.",
+        "The value proposition has shifted; I'll look elsewhere.",
+      ],
+      Downgrade: [
+        "Downgrading keeps value while limiting unnecessary spend.",
+        "I'll reduce my plan to match what I actually use.",
+        "A lower tier still meets my needs and saves money.",
+        "Downgrade is my compromise between staying and leaving.",
+      ],
+    };
+    const msgList = msgs[action];
+    const lastMessage = msgList[(i + action.length) % msgList.length];
+    const confidence = clamp(0.42 + (traits.C - traits.N) * 0.025 + (traits.E - 5) * 0.02 + (i % 5) * 0.02, 0.38, 0.91);
     return {
       id: `agent-${i + 1}`,
       name: `${pick(FIRST)}-${100 + i}`,
-      role: t.role,
+      role,
       culture: pick(CULTURES),
       education: pick(EDUCATION),
       income: pick(INCOME),
       traits,
       archetype: archetypeFromTraits(traits),
       confidence: Number(confidence.toFixed(2)),
-      lastAction: t.action,
-      lastReasoning: "The agent balances budget pressure, utility, and perceived switching cost.",
-      lastMessage: t.msg,
-      thinkingProcess: "Weighing service value against price elasticity and personal risk tolerance.",
-      reasoningHistory: [{ round: 0, stance: t.action, reasoning: "Initial prior before social influence effects." }],
-      persona: t.persona,
+      lastAction: action,
+      lastReasoning,
+      lastMessage,
+      thinkingProcess,
+      reasoningHistory: [{ round: 0, stance: action, reasoning: lastReasoning }],
+      persona,
     };
   });
 }
@@ -414,10 +473,10 @@ export default function HumanityPhase1() {
   const [swarmLinks, setSwarmLinks] = useState([]);
   const [isAllocating, setIsAllocating] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [swarmCount, setSwarmCount] = useState(25);
+  const [swarmCount, setSwarmCount] = useState(12);
   const [activeTask, setActiveTask] = useState("Coordinate resources for emergency response");
   const [scenario, setScenario] = useState("Price increase of 15%. Do you stay, churn, or downgrade?");
-  const [numRounds, setNumRounds] = useState(3);
+  const [numRounds, setNumRounds] = useState(2);
   const [isRunningSimulation, setIsRunningSimulation] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
   const [simulationLog, setSimulationLog] = useState([]);
@@ -843,7 +902,63 @@ export default function HumanityPhase1() {
 
       {/* ═══ SWARM NETWORK VIEW (Strand Pattern) ═══ */}
       {view === "swarm" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(320px, 360px)", height: "calc(100vh - 63px)", overflow: "hidden" }}>
+        <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 63px)", overflow: "hidden" }}>
+          {/* Top: Overall sentiment + example agent suggestions */}
+          {(actionAggregate || simulationLog.length > 0 || swarmAgents.some(a => a.lastMessage)) && (
+            <div style={{
+              flexShrink: 0,
+              padding: "12px 20px",
+              borderBottom: `1px solid ${T.border}`,
+              background: T.panelHi,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 20,
+              alignItems: "flex-start",
+            }}>
+            <div style={{ minWidth: 200 }}>
+              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6, textTransform: "uppercase" }}>Overall sentiment</div>
+              <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                {actionAggregate ? (
+                  <>
+                    <span style={{ color: T.green, fontSize: 13, fontWeight: 700 }}>Stay {actionAggregate.stayPct}%</span>
+                    <span style={{ color: T.rose, fontSize: 13, fontWeight: 700 }}>Churn {actionAggregate.churnPct}%</span>
+                    <span style={{ color: T.amber, fontSize: 13, fontWeight: 700 }}>Downgrade {actionAggregate.downgradePct}%</span>
+                  </>
+                ) : (
+                  <span style={{ color: T.text3, fontSize: 12 }}>Run simulation to see sentiment.</span>
+                )}
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontSize: 10, color: T.text4, fontFamily: FONT_MONO, letterSpacing: "0.08em", marginBottom: 6, textTransform: "uppercase" }}>Example agent suggestions</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {(() => {
+                  const examples = [];
+                  if (simulationLog.length > 0) {
+                    simulationLog.slice(-6).forEach(entry => {
+                      if (entry.agentName != null && entry.message) examples.push({ name: entry.agentName, message: entry.message, action: entry.action });
+                    });
+                  }
+                  if (examples.length < 3) {
+                    swarmAgents.filter(a => a.lastMessage).slice(0, 3 - examples.length).forEach(a => {
+                      examples.push({ name: a.name, message: a.lastMessage, action: a.lastAction });
+                    });
+                  }
+                  return examples.slice(0, 3).map((ex, i) => (
+                    <div key={i} style={{ fontSize: 11, color: T.text2, lineHeight: 1.4 }}>
+                      <span style={{ color: T.blue, fontWeight: 600 }}>{ex.name}</span>
+                      {ex.action && <span style={{ color: T.text4, marginLeft: 6 }}>({ex.action})</span> — {String(ex.message).slice(0, 80)}{String(ex.message).length > 80 ? "…" : ""}
+                    </div>
+                  ));
+                })()}
+                {simulationLog.length === 0 && !swarmAgents.some(a => a.lastMessage) && (
+                  <span style={{ color: T.text3, fontSize: 12 }}>Run simulation to see example agent messages.</span>
+                )}
+              </div>
+            </div>
+          </div)}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(320px, 360px)", flex: 1, minHeight: 0 }}>
           {/* Main Visualizer Area */}
           <div style={{ padding: 20, position: "relative", minWidth: 0 }}>
             {swarmAgents.length === 0 ? (
@@ -1145,6 +1260,7 @@ export default function HumanityPhase1() {
                 )}
               </div>
             )}
+          </div>
           </div>
         </div>
       )}

@@ -2,11 +2,14 @@
 Generate a population of personas using AWS Bedrock (Mistral).
 """
 import json
+import logging
 import re
 from typing import List
 
 from .persona import Persona, OceanTraits
 from llm.bedrock_client import BedrockClient
+
+log = logging.getLogger(__name__)
 
 
 SYSTEM = """You are a demographic and psychology expert. Generate realistic, diverse personas as JSON only."""
@@ -56,15 +59,17 @@ def generate_agents(
             max_tokens=4096,
             temperature=0.8,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("Bedrock persona generation failed, using fallback: %s", e)
         return _fallback_personas(population_size)
     raw = re.sub(r"^```\w*\n?", "", raw)
     raw = re.sub(r"\n?```\s*$", "", raw)
     raw = raw.strip()
     try:
         arr = json.loads(raw)
-    except json.JSONDecodeError:
-        arr = _fallback_personas(population_size)
+    except json.JSONDecodeError as e:
+        log.warning("Bedrock response JSON parse failed, using fallback: %s", e)
+        return _fallback_personas(population_size)
     out: List[Persona] = []
     for i, obj in enumerate(arr[:population_size]):
         if not isinstance(obj, dict):

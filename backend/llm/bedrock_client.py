@@ -52,15 +52,16 @@ class BedrockClient:
         max_tokens: int = 2048,
         temperature: float = 0.7,
     ) -> str:
-        """Invoke Mistral model via Bedrock. Returns assistant text."""
-        messages = []
+        """Invoke Mistral model via Bedrock. Returns assistant text.
+        Uses native inference format: single <s>[INST] ... [/INST] as required by AWS."""
+        import logging
+        log = logging.getLogger(__name__)
+        instruction = prompt
         if system:
-            messages.append({"role": "user", "content": system})
-            messages.append({"role": "assistant", "content": "Understood."})
-        messages.append({"role": "user", "content": prompt})
-
+            instruction = f"{system}\n\n{prompt}"
+        formatted_prompt = f"<s>[INST] {instruction} [/INST]"
         body = {
-            "prompt": self._messages_to_mistral_prompt(messages),
+            "prompt": formatted_prompt,
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
@@ -73,10 +74,13 @@ class BedrockClient:
                 body=json.dumps(body),
             )
             result = json.loads(response["body"].read())
-            text = result.get("outputs", [{}])[0].get("text", "").strip()
+            text = (result.get("outputs") or [{}])[0].get("text", "").strip()
             if text:
                 return text
-        except Exception:
+        except Exception as e:
+            log.warning("Bedrock invoke_model failed: %s", e, exc_info=bool(os.getenv("BEDROCK_DEBUG")))
+            if os.getenv("BEDROCK_DEBUG"):
+                raise
             # Fall through to direct Mistral API if configured.
             pass
 
@@ -91,17 +95,6 @@ class BedrockClient:
         raise RuntimeError(
             "No working LLM provider. Configure Bedrock credentials or MISTRAL_API_KEY."
         )
-
-    def _messages_to_mistral_prompt(self, messages: list[dict]) -> str:
-        parts = []
-        for m in messages:
-            role = m.get("role", "user")
-            content = m.get("content", "")
-            if role == "user":
-                parts.append(f"[INST] {content} [/INST]")
-            else:
-                parts.append(content)
-        return "\n".join(parts)
 
     async def invoke_async(
         self,

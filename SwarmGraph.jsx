@@ -23,6 +23,8 @@ const SwarmGraph = ({ agents, links, onNodeClick, onNodeHover, grayscale = false
       confidence: agent.confidence ?? null,
       archetype: agent.archetype || "",
       lastReasoning: agent.lastReasoning || "",
+      thinkingProcess: agent.thinkingProcess || "",
+      lastMessage: agent.lastMessage || "",
       persona: agent.persona || '',
       culture: agent.culture || '',
       income: agent.income || '',
@@ -52,20 +54,24 @@ const SwarmGraph = ({ agents, links, onNodeClick, onNodeHover, grayscale = false
         ref={fgRef}
         graphData={data}
         nodeLabel={node => {
-          const parts = [node.name, node.role];
-          if (node.persona) parts.push(node.persona);
-          if (node.culture) parts.push(`Location: ${node.culture}`);
-          if (node.income) parts.push(node.income);
-          if (node.lastAction) parts.push(`Vote: ${node.lastAction}`);
-          if (node.archetype) parts.push(`Archetype: ${node.archetype}`);
-          if (node.confidence != null) parts.push(`Confidence: ${Math.round(Number(node.confidence) * 100)}%`);
-          if (node.lastReasoning) parts.push(`Reasoning: ${node.lastReasoning}`);
+          const parts = [
+            `${node.name} · ${node.role}`,
+            node.persona && `Persona: ${node.persona}`,
+            node.culture && `Location: ${node.culture}`,
+            node.income && `Income: ${node.income}`,
+            node.lastAction && `Vote: ${node.lastAction}`,
+            node.archetype && `Archetype: ${node.archetype}`,
+            node.confidence != null && `Confidence: ${Math.round(Number(node.confidence) * 100)}%`,
+            node.thinkingProcess && `Thought process: ${node.thinkingProcess}`,
+            node.lastReasoning && `Reasoning: ${node.lastReasoning}`,
+            node.lastMessage && `Said: "${node.lastMessage}"`,
+          ];
           if (node.traits && typeof node.traits === 'object') {
             const t = node.traits;
             const ocean = ['O', 'C', 'E', 'A', 'N'].map(k => t[k] != null ? `${k}:${t[k]}` : null).filter(Boolean);
             if (ocean.length) parts.push(`OCEAN: ${ocean.join(' ')}`);
           }
-          return parts.join('\n');
+          return parts.filter(Boolean).join('\n');
         }}
         nodeColor={() => palette.node}
         nodeCanvasObject={(node, ctx, globalScale) => {

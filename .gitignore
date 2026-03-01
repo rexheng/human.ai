@@ -10,6 +10,14 @@ lerna-debug.log*
 # Node modules
 node_modules/
 dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
 dist-ssr/
 *.local
 
@@ -24,9 +32,10 @@ dist-ssr/
 *.sln
 *.sw?
 
-# Environment variables
+# Environment variables (never commit keys)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+backend/.env

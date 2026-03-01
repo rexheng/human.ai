@@ -44,3 +44,15 @@ Runtime order:
 2. Bedrock (`bedrock-runtime`)
 3. Direct Mistral API (if `MISTRAL_API_KEY` is set)
 4. Local deterministic fallback behavior
+
+## Why the backend might use hardcoded fallback
+
+See **BACKEND_FALLBACK_ANALYSIS.md** for full analysis. Summary:
+
+- **Bedrock format**: The Mistral native format requires a single `<s>[INST] ... [/INST]` prompt. The client now uses this; previously the prompt could be rejected or misparsed.
+- **Credentials**: Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in `backend/.env`. Use `.env.example` as a template (no extra text on the same line as the variable).
+- **Debug**: Set `BEDROCK_DEBUG=1` to log and re-raise Bedrock errors. Check logs for "Bedrock persona generation failed" or "Bedrock behavior invoke failed".
+
+## Strands Swarm (policy debate)
+
+- Set `USE_STRANDS_SWARM=1` to run an optional Strands **Swarm** (researcher → critic → synthesizer) for a structured policy debate. See `agents/swarm_debate.py`. Call `run_policy_debate_swarm(scenario)` from your code to use it.

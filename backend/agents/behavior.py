@@ -3,12 +3,15 @@ Agent behavior: prompt and call LLM so agent responds in character.
 Supports Strands Agent invocation first, then Bedrock/Mistral, then deterministic fallback.
 """
 import json
+import logging
 import os
 import re
 from typing import Any, Dict, List
 
 from .persona import AgentState
 from llm.bedrock_client import BedrockClient
+
+log = logging.getLogger(__name__)
 
 
 BEHAVIOR_SYSTEM = """You are simulating a human persona in a policy discussion. Stay in character. Reply briefly and naturally."""
@@ -155,7 +158,8 @@ def _invoke_with_strands(prompt: str) -> Dict[str, Any]:
     try:
         from strands import Agent as StrandsAgent
         from strands.models import BedrockModel
-    except Exception:
+    except Exception as e:
+        log.debug("Strands import skipped: %s", e)
         return {}
 
     model_id = os.getenv("STRANDS_MODEL_ID", "us.anthropic.claude-sonnet-4-20250514-v1:0")
@@ -166,7 +170,8 @@ def _invoke_with_strands(prompt: str) -> Dict[str, Any]:
         result = strands_agent(prompt)
         raw = getattr(result, "message", None) or str(result)
         return _extract_json(str(raw))
-    except Exception:
+    except Exception as e:
+        log.warning("Strands agent invoke failed: %s", e)
         return {}
 
 
@@ -202,6 +207,10 @@ def get_agent_response_detail(
     conversation_messages: List[dict],
     bedrock: BedrockClient,
 ) -> Dict[str, Any]:
+    # Fast simulation: skip LLM, use deterministic fallback so rounds finish in seconds
+    if os.getenv("USE_FAST_SIMULATION", "0").lower() in {"1", "true", "yes"}:
+        return _fallback_opinion(agent, scenario)
+
     p = agent.persona
     o = p.ocean
     messages = _format_messages(conversation_messages)
@@ -247,7 +256,8 @@ def get_agent_response_detail(
             max_tokens=300,
             temperature=0.7,
         )
-    except Exception:
+    except Exception as e:
+        log.warning("Bedrock behavior invoke failed: %s", e)
         return _fallback_opinion(agent, scenario)
 
     text = (raw or "").strip()
